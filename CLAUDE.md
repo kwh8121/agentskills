@@ -42,6 +42,9 @@ done
 echo '{"hook_event_name":"PreToolUse","agent_type":"reviewer","agent_id":"s1",
        "tool_name":"Write","tool_input":{"file_path":"src/x.ts","content":"y"}}' \
   | python3 .claude/skills/harness-architect/scripts/guard-readonly.py
+
+# 4) 세션 재개 판정이 동작하는지 — state 가 없는 새 저장소이므로 exit 0
+python3 .claude/skills/harness-architect/scripts/resume-check.py; echo "exit=$?"   # 0
 ```
 
 단일 spec 검증: `python3 .../validate-spec.py _workspace/harness/spec.yaml --gates _workspace/harness/gates.tsv`
@@ -56,15 +59,22 @@ echo '{"hook_event_name":"PreToolUse","agent_type":"reviewer","agent_id":"s1",
 라우터 **스킬**(Agent 가 아니다). 분석·판정·구성안 생성은 스킬이 하고, 실제 작업은
 카탈로그의 Agent 7종이 한다. 절차적 지식은 직접 쓰지 않고 `superpowers` 플러그인 스킬에 위임한다.
 
-### 실행 흐름 (`SKILL.md` 의 Phase 0~5)
+### 실행 흐름 (`SKILL.md` 의 Phase −1~5)
 
+0. **Phase −1** — `resume-check.py` 로 세션 재개 판정. exit 0(재개 없음)·10(자동 재개 후보,
+   Phase ≤ 2)·11(사람 판단 — Phase 3 이상·불일치·손상)·12(완료된 이전 작업). 승인은
+   세션을 넘어 상속되지 않는다 — Phase 3 이상에서 재개하면 새로 승인받는다.
 1. **Phase 0** — `task` 6필드 정규화. 목표가 불명확하면 `superpowers:brainstorming` 으로 이탈.
 2. **Phase 1** — `init-workspace.sh` 로 결정론적 게이트(`gates.tsv`) 탐지. 명령을 지어내지 않는다.
 3. **Phase 2** — `references/profiling.md` 6축 판정 → `references/routing.md` 5스텝 판정 트리로 레벨 결정.
 4. **Phase 3** — `schemas/harness-spec.yaml` 형식으로 `_workspace/harness/spec.yaml` 작성 →
    `validate-spec.py` (exit 1 이면 승인 요청 금지) → **한 화면 요약으로 사용자 승인**.
 5. **Phase 4** — 레벨별 실행. **승인 전 에이전트 스폰 금지.**
-6. **Phase 5** — 최종 게이트 → `superpowers:verification-before-completion` → Human Gate.
+7. **Phase 5** — 최종 게이트 → `superpowers:verification-before-completion` → Human Gate.
+
+각 Phase 전환·역할 완료마다 `checkpoint.py` 가 `_workspace/harness/state.json` 에 진행을
+원자적으로 기록한다 (`run-gates.sh`·`init-workspace.sh` 는 자동으로, 나머지는 SKILL.md 절차대로).
+기록 실패는 하네스를 멈추지 않지만 stderr 로 알린다.
 
 ### 레벨 판정의 핵심
 
@@ -96,7 +106,10 @@ harness-architect 는 "진실의 원천"이 코드·스키마·문서·테스트
 
 | 개념 | 정의 위치 (전부 일치해야 함) |
 |---|---|
-| 에이전트 7종 (`CATALOG`) | `scripts/validate-spec.py` · `references/catalog.md` · `.claude/agents/*.md` |
+| 에이전트 7종 (`CATALOG`) | `scripts/validate-spec.py` · `scripts/checkpoint.py` · `references/catalog.md` · `.claude/agents/*.md` |
+| 자동 재개 상한 (`AUTO_MAX_PHASE = 2`) | `scripts/resume-check.py` · `scripts/checkpoint.py` Phase −1 주석 · `SKILL.md` Phase −1 · README |
+| 재개 판정 exit code (0 / 10 / 11 / 12) | `scripts/resume-check.py` · `SKILL.md` Phase −1 표 · README "중단하면 재개한다" 표 |
+| state 스키마 버전 (`schema_version` / `SCHEMA_VERSION`, 현재 1) | `scripts/checkpoint.py` · `scripts/resume-check.py` |
 | 허용 스킬 목록 (`ALLOWED_SKILLS` / `CONTROLLER_ONLY_SKILLS`) | `scripts/validate-spec.py` · `references/catalog.md` 매핑표 |
 | 재라우팅 매핑 (`escalation`) | `scripts/validate-spec.py` · `references/routing.md` 표 · `schemas/harness-spec.yaml` · `agents/orchestrator.md` |
 | 레벨↔패턴 / 레벨↔추적모드 / `max_loops` 상한 / `max_workers` 상한 | `scripts/validate-spec.py` · `schemas/harness-spec.yaml` · README |
@@ -116,7 +129,7 @@ Human Gate 누락, H3 `escalation` 계약 누락 등을 거부한다. 새 검사
 | 의존 | 없으면 |
 |---|---|
 | `superpowers` 플러그인 (6.3.0) | H0 도 `verification-before-completion` 이 필수라 완전히 끊긴다. Phase 1 의 `check-superpowers.sh` 가 감지해 `init-workspace.sh` 가 exit 4 로 즉시 중단하고 설치 명령을 제시한다 (버전이 아니라 **필수 스킬 11종의 존재**로 판정한다 — 서로 다른 버전이 공존할 수 있다) |
-| PyYAML (`pip install pyyaml`) | `validate-spec.py` 가 exit 2 — 승인 게이트를 사람이 대신 확인 |
+| PyYAML (`pip install pyyaml`) | `validate-spec.py` 가 exit 2 — 승인 게이트를 사람이 대신 확인. 세션 재개(`checkpoint.py`·`resume-check.py`)는 표준 라이브러리 `json` 만 쓰므로 영향 없다 |
 | Linear MCP | `tracking.provider: linear` 불가. `none` 이면 정상 동작 |
 
 ## 불변 규칙 (스킬 로직을 건드릴 때)
@@ -131,4 +144,10 @@ Human Gate 누락, H3 `escalation` 계약 누락 등을 거부한다. 새 검사
 - **격리와 해제는 쌍이다.** worktree 를 만드는 레벨(H2·H3)은 정리 스킬까지 함께 선언한다.
   정리 시점은 **통합 결과**가 정하고 Linear 상태가 정하지 않는다 (`Canceled` 는 강등을
   포함하고 `Done` 은 통합보다 먼저 찍힌다).
+- **진행을 기록한다.** Phase 전환·역할 완료마다 `checkpoint.py` 로 `state.json` 에 남긴다.
+  기록 실패는 멈추지 않지만 조용히 넘기지도 않는다 (stderr 로 알린다).
+- **승인은 세션을 넘어 상속되지 않는다.** Phase 3 이상에서 재개하면 `resume-check.py` 가
+  exit 11 로 사람에게 넘기고, 이전 세션의 승인을 재사용하지 않고 새로 승인받는다.
+- **손상된 state 는 추측으로 복구하지 않는다.** `resume-check.py` 는 exit 11 로,
+  `checkpoint.py` 는 exit 3 으로 멈춘다 (원본 보존).
 - **Linear 쓰기는 컨트롤러만.** 워커·orchestrator 는 상태 토큰만 반환한다. H0 은 추적하지 않는다.
