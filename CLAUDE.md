@@ -26,7 +26,11 @@ Claude Code **스킬 모음**이다. 애플리케이션이 아니라 배포 산�
 ```bash
 cd harness-architect
 
+# 0) superpowers preflight — exit 1 이면 필수 스킬 목록과 함께 없는 것을 알려준다
+bash .claude/skills/harness-architect/scripts/check-superpowers.sh
+
 # 1) 스택 감지 — gates.tsv 생성. exit 3 이면 스택 미감지(정상일 수 있음)
+#    exit 4 이면 superpowers 미설치 — 골격을 만들지 않고 즉시 중단한다
 bash .claude/skills/harness-architect/scripts/init-workspace.sh
 
 # 2) HarnessSpec 예제 4종이 계약 검증기를 통과하는지 (PyYAML 필요, 없으면 exit 2)
@@ -100,6 +104,7 @@ harness-architect 는 "진실의 원천"이 코드·스키마·문서·테스트
 | tier 3종 (`fast`/`feature`/`final`) 과 스크립트 이름→tier 매핑 | `scripts/detect-stack.sh` · `scripts/run-gates.sh` · `scripts/validate-spec.py` |
 | 읽기 전용 역할과 쓰기 허용 범위 | `scripts/guard-readonly.py` (`READONLY_ROLES`) · `references/catalog.md` 강제 수준 표 |
 | superpowers 버전 (현재 6.3.0) | `references/catalog.md` |
+| 필수 superpowers 스킬 목록 (`REQUIRED_SKILLS`) | `scripts/check-superpowers.sh` · `scripts/validate-spec.py` 의 `ALLOWED_SKILLS`(내장 `security-review` 제외) · `references/catalog.md` 매핑표 |
 
 `validate-spec.py` 는 `yaml.safe_load` 성공("문법이 YAML")을 넘어 카탈로그 밖 에이전트,
 `model` 누락, 축 모순(`coupling: high` + `parallelism ≠ none`), **수용 기준에 대응하는 게이트 부재**,
@@ -110,7 +115,7 @@ Human Gate 누락, H3 `escalation` 계약 누락 등을 거부한다. 새 검사
 
 | 의존 | 없으면 |
 |---|---|
-| `superpowers` 플러그인 (6.3.0) | H0 도 `verification-before-completion` 이 필수라 완전히 끊긴다 |
+| `superpowers` 플러그인 (6.3.0) | H0 도 `verification-before-completion` 이 필수라 완전히 끊긴다. Phase 1 의 `check-superpowers.sh` 가 감지해 `init-workspace.sh` 가 exit 4 로 즉시 중단하고 설치 명령을 제시한다 (버전이 아니라 **필수 스킬 11종의 존재**로 판정한다 — 서로 다른 버전이 공존할 수 있다) |
 | PyYAML (`pip install pyyaml`) | `validate-spec.py` 가 exit 2 — 승인 게이트를 사람이 대신 확인 |
 | Linear MCP | `tracking.provider: linear` 불가. `none` 이면 정상 동작 |
 

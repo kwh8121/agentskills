@@ -46,13 +46,17 @@ cp -r harness-architect/.claude /path/to/your-project/
 | Bash, POSIX `awk`/`grep` | `detect-stack.sh`·`run-gates.sh`·`gate-summary.sh` |
 | Python 3 | `validate-spec.py`, `guard-readonly.py` |
 | **PyYAML** (`pip install pyyaml`) — 선택 | 없으면 `validate-spec.py` 가 exit 2 로 "검증 불가"를 알린다. 하네스는 계속 동작하지만 아래 "승인 게이트 확인" 항목을 사람이 대신 봐야 한다 |
-| [superpowers 플러그인](https://github.com/obra/superpowers) (6.3.0 기준) | H0 도 `verification-before-completion` 이 필수라 완전히 끊긴다. 매핑표는 `references/catalog.md` |
+| [superpowers 플러그인](https://github.com/obra/superpowers) (6.3.0 기준) | H0 도 `verification-before-completion` 이 필수라 완전히 끊긴다. **Phase 1 이 감지해 exit 4 로 중단하고 설치 명령(`/plugin install superpowers@claude-plugins-official`)을 제시한다.** 매핑표는 `references/catalog.md` |
 | Linear MCP — 선택 | `tracking.provider: linear` 를 쓸 수 없다. `none` 으로 두면 그대로 동작한다 |
 
 ### 설치 확인
 
 ```bash
+# superpowers preflight — 필수 스킬 11종이 있는지 확인 (없으면 목록을 알려준다)
+bash .claude/skills/harness-architect/scripts/check-superpowers.sh
+
 # 스택 감지 — 대상 프로젝트의 실제 검증 명령을 찾아내는지 확인
+# (superpowers 가 없으면 골격을 만들지 않고 exit 4 로 중단한다)
 bash .claude/skills/harness-architect/scripts/init-workspace.sh
 
 # HarnessSpec 예제 4종이 계약 검증기를 통과하는지 확인 (PyYAML 필요)
@@ -91,7 +95,8 @@ echo '{"hook_event_name":"PreToolUse","agent_type":"reviewer","agent_id":"s1",
 - `.claude/skills/harness-architect/examples/` — H0~H3 판정 사례 4종
 - `.claude/skills/harness-architect/scripts/` —
   `detect-stack.sh` / `run-gates.sh` / `init-workspace.sh` / `gate-summary.sh` /
-  `harness-paths.sh`(source 전용) (셸) + `validate-spec.py` / `guard-readonly.py` (파이썬)
+  `check-superpowers.sh` / `harness-paths.sh`(source 전용) (셸) +
+  `validate-spec.py` / `guard-readonly.py` (파이썬)
 - `.claude/agents/` × 7 — implementer / reviewer / dependency-mapper / baseline-tester /
   integrator / orchestrator / deployment-agent
 - `.claude/settings.json` — 읽기 전용 가드 훅 등록

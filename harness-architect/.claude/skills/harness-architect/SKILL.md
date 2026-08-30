@@ -34,6 +34,14 @@ allowed-tools: Agent, Bash, Read, Write, Edit, Grep, Glob, Skill
 
 - exit 0 → `_workspace/harness/gates.tsv` 가 이번 작업의 검증 명령 전부다.
 - exit 3 → 스택 미감지. **명령을 지어내지 말고** 사용자에게 물어 `tier<TAB>command` 로 기록한다.
+- exit 4 → superpowers 미설치. **여기서 멈춘다.** 하네스는 H0 조차
+  `verification-before-completion` 에 의존하므로 진행할 수 없다.
+  1. 사용자에게 설치 여부를 묻는다.
+  2. 승인하면 `/plugin install superpowers@claude-plugins-official` 을 **제시한다.**
+     슬래시 명령은 스킬이 대신 실행할 수 없다 — 사용자가 입력한다. 재시작은 필요 없다.
+  3. 설치 확인 후 **Phase 1 을 처음부터 다시 실행한다** (골격이 아직 없다).
+  4. 거부하면 하네스를 중단한다. **미설치 상태로 Phase 2 로 넘어가지 않는다** —
+     검증 절차 없이 완료를 선언하게 된다.
 
 ## Phase 2 — 프로파일링과 라우팅
 
