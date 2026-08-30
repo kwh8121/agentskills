@@ -90,8 +90,8 @@ echo '{"hook_event_name":"PreToolUse","agent_type":"reviewer","agent_id":"s1",
 - `.claude/skills/harness-architect/schemas/harness-spec.yaml` — 실행 계약 스키마
 - `.claude/skills/harness-architect/examples/` — H0~H3 판정 사례 4종
 - `.claude/skills/harness-architect/scripts/` —
-  `detect-stack.sh` / `run-gates.sh` / `init-workspace.sh` / `gate-summary.sh`
-  (셸) + `validate-spec.py` / `guard-readonly.py` (파이썬)
+  `detect-stack.sh` / `run-gates.sh` / `init-workspace.sh` / `gate-summary.sh` /
+  `harness-paths.sh`(source 전용) (셸) + `validate-spec.py` / `guard-readonly.py` (파이썬)
 - `.claude/agents/` × 7 — implementer / reviewer / dependency-mapper / baseline-tester /
   integrator / orchestrator / deployment-agent
 - `.claude/settings.json` — 읽기 전용 가드 훅 등록
@@ -154,6 +154,22 @@ python3 .claude/skills/harness-architect/scripts/validate-spec.py \
 **쓰기는 컨트롤러만 한다** — 워커·orchestrator 는 Linear 를 건드리지 않고 상태 토큰만
 반환한다. 추적 실패는 하네스를 멈추지 않는다. 상세 매핑은 `references/linear-tracking.md`.
 
+## 작업 공간은 만든 하네스가 정리한다
+
+H2·H3 은 `superpowers:using-git-worktrees` 로 격리된 worktree 에서 작업하고, Phase 5 에서
+`superpowers:finishing-a-development-branch` 로 정리한다. **두 스킬은 쌍이며
+`validate-spec.py` 가 그 짝을 강제한다** (`E-SKILL-WORKTREE`).
+
+정리 시점을 정하는 것은 **통합 결과**다 — 로컬 머지 완료면 제거, PR 생성이나 유지면 보존.
+**Linear 상태는 정리를 트리거하지 않는다.** `Canceled` 는 폐기뿐 아니라 강등(H2→H1, 작업은
+계속된다)을 포함하고, `Done` 은 최종 게이트 통과 시점이라 브랜치 통합보다 먼저 찍히기
+때문이다. Linear 는 반대 방향으로만 쓴다: `In Progress` 면 경고하고, `Canceled` 면 폐기
+메뉴를 제시만 한다.
+
+게이트 로그·조사 보고서는 `scripts/harness-paths.sh` 가 `_workspace/` 를 **메인 워크트리
+루트**에 고정하므로 worktree 를 제거해도 남는다. 게이트 *명령*은 그대로 현재 트리에서
+실행된다 — 검증 대상은 worktree 의 코드다.
+
 ## 승인 게이트 확인
 
 Phase 3 에서 승인을 요청받으면 다음을 확인한다.
@@ -166,6 +182,8 @@ Phase 3 에서 승인을 요청받으면 다음을 확인한다.
       `verification.manual` 에 있는가? 어느 쪽에도 없는 수용 기준은 검증되지 않은 채
       완료 선언된다
 - [ ] (Linear 추적 시) 추적 대상이 만들어졌고 상태가 `Triage` 다
+- [ ] (H2·H3) `controller_skills` 에 `using-git-worktrees` 와
+      `finishing-a-development-branch` 가 **둘 다** 있다 — 격리를 만들었으면 해제도 절차에 있어야 한다
 
 ## 알려진 한계
 

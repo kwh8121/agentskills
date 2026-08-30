@@ -80,9 +80,9 @@ dependency-mapper 는 아무 데도 쓰지 못한다.
 | 계획을 서브에이전트로 실행 | `superpowers:subagent-driven-development` | controller | H2, H3 |
 | 독립 조사 2건 이상을 동시에 | `superpowers:dispatching-parallel-agents` | controller | 전 레벨 |
 | reviewer 호출 방법·심사 기준 | `superpowers:requesting-code-review` | controller | H1–H3 |
-| 작업 공간 격리 | `superpowers:using-git-worktrees` | controller | H2, H3 |
+| 작업 공간 격리 | `superpowers:using-git-worktrees` | controller | H2, H3 (**필수**) |
 | 완료 선언 직전 | `superpowers:verification-before-completion` | controller | **전 레벨 필수** |
-| 브랜치 마무리 (머지·PR·유지) | `superpowers:finishing-a-development-branch` | controller | H1–H3 |
+| 브랜치 마무리 + 작업 공간 정리 | `superpowers:finishing-a-development-branch` | controller | H2·H3 **필수** / H1 은 브랜치 작업 시 |
 | implementer 의 기본 작업 방식 | `superpowers:test-driven-development` | agent (implementer) | H1–H3 |
 | 리뷰 피드백 수신·반영 | `superpowers:receiving-code-review` | agent (implementer) | H1–H3 |
 | 게이트가 반복 실패, 원인 불명 | `superpowers:systematic-debugging` | 양쪽 | 전 레벨 |

@@ -1,0 +1,7 @@
+# 하네스 실행 산출물 — 게이트 로그·조사 보고서·리뷰·spec. 커밋하지 않는다.
+_workspace/
+
+# superpowers:using-git-worktrees 가 만드는 격리 작업 공간.
+# 이 디렉터리가 ignore 되어 있지 않으면 그 스킬이 worktree 생성을 멈춘다.
+.worktrees/
+worktrees/

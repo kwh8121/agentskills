@@ -2,7 +2,7 @@
 # init-workspace.sh — 하네스 실행에 쓸 _workspace 골격을 만들고 스택을 감지한다.
 #
 # 사용법:  init-workspace.sh [프로젝트_디렉터리]     (기본값: 현재 디렉터리)
-# 산출물:
+# 산출물 (전부 메인 워크트리 루트 기준 — harness-paths.sh 참고):
 #   _workspace/harness/gates.tsv    감지된 결정론적 게이트 (없으면 빈 파일 + 경고)
 #   _workspace/harness/gates/       게이트 실행 로그가 쌓일 곳
 #   _workspace/harness/research/    dependency-mapper · baseline-tester 보고서
@@ -13,7 +13,11 @@ set -uo pipefail
 
 PROJECT_DIR="${1:-.}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WS="_workspace/harness"
+# shellcheck source=harness-paths.sh
+. "$HERE/harness-paths.sh"
+
+# H2/H3 이 worktree 로 옮겨 가도 산출물은 한곳에 남아야 한다.
+WS="$(harness_workspace)"
 
 mkdir -p "$WS/gates" "$WS/research" "$WS/review"
 
