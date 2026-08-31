@@ -5,3 +5,9 @@ _workspace/
 # 이 디렉터리가 ignore 되어 있지 않으면 그 스킬이 worktree 생성을 멈춘다.
 .worktrees/
 worktrees/
+
+# 하네스 도구가 이 저장소를 작업 디렉터리로 잡았을 때 만드는 설정 사본.
+# (mem0·superpowers 같은 플러그인이 .opencode/ .codex/ 아래에 스킬을 복사해 둔다)
+# 이 저장소가 배포하는 어댑터는 harness-architect/{claude,codex,opencode}/ 에 있다.
+/.opencode/
+/.codex/
