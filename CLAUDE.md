@@ -47,6 +47,10 @@ echo '{"source":{"subagent":{"thread_spawn":{"agent_type":"orchestrator"}}},"too
 echo '{"agent":"reviewer","tool":"write","args":{"filePath":"src/y.ts"}}' \
   | python3 core/scripts/guard-readonly.py --harness opencode
 
+# 2-1) 허용 범위 안의 mkdir/touch/rm 은 통과해야 한다 (issue #1 회귀 — 출력 없어야 함)
+echo '{"agent_type":"reviewer","tool_name":"Bash","tool_input":{"command":"mkdir -p _workspace/harness/review"}}' \
+  | python3 core/scripts/guard-readonly.py
+
 # 3) 세션 재개 판정이 동작하는지 — state 가 없는 새 저장소이므로 exit 0
 python3 core/scripts/resume-check.py; echo "exit=$?"
 

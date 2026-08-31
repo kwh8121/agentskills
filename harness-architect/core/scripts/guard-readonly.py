@@ -14,6 +14,16 @@ MCP 도구도 본다:
     경로 키도 `relative_path` 등 MCP 서버별 표기를 함께 본다. 쓰기 도구로 보이는데 대상
     경로를 못 찾으면 거부한다 — 무엇을 쓰는지 모르는 쓰기를 허용할 근거가 없다.
 
+셸 명령도 대상 경로를 본다 (issue #1):
+    `mkdir`/`touch`/`rm`/`rmdir`/`mv`/`cp`/`install`/`tee` 는 명령 이름 뒤의 비-플래그
+    토큰을 대상 경로로 뽑아 `Write` 도구와 같은 기준으로 검사한다 — 허용 범위 **안**이면
+    통과시킨다. 예전에는 이름이 매칭되면 경로를 보지 않고 무조건 거부해서, reviewer 가
+    `_workspace/` 안에 `mkdir -p`/`touch` 도 못 하는 비대칭이 있었다(실제 H1 dispatch 에서
+    보고서 저장이 막힌 것으로 재현됨). `sed -i`/`perl -i`(스크립트와 경로를 구분할 수 없다),
+    `chmod`/`chown`/`ln`/`truncate`/`dd`/`shred`(빈도 낮고 오탐 위험 대비 이득이 적다),
+    `git *`/`npm install`/`pip install`(경로 하나가 아니라 저장소·환경 전체에 영향)는
+    여전히 무조건 거부한다 — ALWAYS_DENY_COMMANDS.
+
 무엇을 막는가 (역할별 쓰기 허용 범위):
     ../roles/manifest.tsv 의 write_scope 열이 진실의 원천이다. 파일을 읽을 수 없으면
     아래 DEFAULT_SCOPES 로 물러난다.
@@ -119,23 +129,34 @@ COMMAND_KEYS = ("command", "cmd", "script")
 # OpenCode 의 apply_patch 는 patchText, Codex 는 input 을 쓴다 (둘 다 실측).
 PATCH_BODY_KEYS = ("patchText", "patch_text", "input", "patch", "content", "diff")
 
-# 셸 안에서 파일을 바꾸는 구문들. 리다이렉션은 대상 경로를 따로 검사한다.
-MUTATING_COMMANDS = [
+# 대상 경로를 뽑아 검사하는 명령. 명령 이름 뒤의 비-플래그 토큰이 관례적으로
+# 대상 경로 하나 이상이다 (issue #1). 허용 범위 안이면 통과, 밖이거나 못 찾으면 거부.
+PATH_SCOPED_COMMANDS = [
+    (re.compile(r"\b(mkdir|touch)\b"), "mkdir/touch (파일·디렉터리 생성)"),
+    (re.compile(r"\b(rm|rmdir)\b"), "rm/rmdir (삭제)"),
+    (re.compile(r"\b(mv|cp|install)\b"), "mv/cp/install (파일 생성·이동)"),
+    (re.compile(r"\btee\b"), "tee (파일 쓰기)"),
+]
+
+# 이름이 매칭되면 대상 경로와 무관하게 항상 거부한다. 스크립트 인자와 경로 인자를
+# 구분할 수 없거나(sed/perl -i), 경로 하나가 아니라 저장소·환경 전체에 영향을 준다
+# (git·패키지 설치). PATH_SCOPED_COMMANDS 로 옮기지 않는다 — 오탐 방지가 우선이다.
+ALWAYS_DENY_COMMANDS = [
     (re.compile(r"\bsed\b[^|;&]*\s-i\b"), "sed -i (제자리 편집)"),
     (re.compile(r"\bperl\b[^|;&]*\s-i\b"), "perl -i (제자리 편집)"),
-    (re.compile(r"\b(rm|rmdir)\s"), "rm/rmdir (삭제)"),
-    (re.compile(r"\b(mv|cp|install)\s"), "mv/cp/install (파일 생성·이동)"),
-    (re.compile(r"\b(truncate|dd|shred)\s"), "truncate/dd/shred"),
-    (re.compile(r"\b(chmod|chown|ln)\s"), "chmod/chown/ln"),
-    (re.compile(r"\b(mkdir|touch)\s"), "mkdir/touch (파일·디렉터리 생성)"),
+    (re.compile(r"\b(truncate|dd|shred)\b"), "truncate/dd/shred"),
+    (re.compile(r"\b(chmod|chown|ln)\b"), "chmod/chown/ln"),
     (re.compile(r"\bgit\s+(commit|apply|checkout|reset|restore|stash|clean|rm|add)\b"),
      "git 쓰기 명령"),
     (re.compile(r"\bnpm\s+(i|install|ci)\b|\bpip\s+install\b"), "패키지 설치"),
-    (re.compile(r"\btee\b"), "tee (파일 쓰기)"),
 ]
 
 # `> path` / `>> path` — `2>&1`, `>&2` 같은 fd 복제는 제외한다.
 REDIRECT = re.compile(r"(?<![0-9&])>>?\s*([^\s;|&()<>]+)")
+
+# PATH_SCOPED_COMMANDS 뒤의 인자를 어디까지 볼지 자르는 경계. 파이프 뒤는 다른
+# 명령이고, 리다이렉션은 REDIRECT 가 따로 본다.
+COMMAND_ARGS_BOUNDARY = re.compile(r"[|;\n]|&&|\|\||>")
 
 ALWAYS_OK_TARGETS = {"/dev/null", "/dev/stdout", "/dev/stderr"}
 
@@ -155,16 +176,43 @@ def deny(reason):
 
 
 def allowed(path, prefixes):
-    """path 가 허용 접두사 안에 있는가. 상위로 빠져나가는 경로는 거부한다."""
+    """path 가 허용 접두사 안에 있는가. 상위로 빠져나가는 경로는 거부한다.
+
+    절대 경로는 가드 프로세스의 cwd(= 이 훅이 실행된 세션의 작업 디렉터리) 기준으로
+    상대화한다 (issue #1 의 부가 보고). 세 하네스 모두 PreToolUse/tool.execute.before
+    훅이 세션의 작업 디렉터리에서 돈다는 전제다 — 다른 프로젝트를 대상으로 서브에이전트를
+    dispatch 했을 때 절대 경로가 무조건 거부되던 것을 고쳤다. 상대화 결과가 cwd 밖으로
+    빠져나가면(`..`) 아래 일반 검사가 그대로 거부한다.
+    """
     p = str(path).strip().strip("\"'")
     if p in ALWAYS_OK_TARGETS:
         return True
-    if p.startswith("/") or p.startswith("~"):
-        return False          # 절대 경로는 작업 트리 밖 — 허용하지 않는다
+    if p.startswith("~"):
+        return False          # 홈 디렉터리 경로는 작업 트리 밖 취급
+    if p.startswith("/"):
+        try:
+            p = os.path.relpath(p, os.getcwd()).replace(os.sep, "/")
+        except ValueError:
+            return False       # 다른 드라이브(Windows) 등 상대화 불가
     if ".." in p.split("/"):
         return False
     p = p[2:] if p.startswith("./") else p
     return any(p.startswith(pre) for pre in prefixes)
+
+
+def command_targets(cmd, match):
+    """cmd 안에서 match(명령어) 뒤에 오는 비-플래그 토큰들을 대상 경로 후보로 뽑는다.
+
+    셸을 파싱하지 않는다 — 다음 메타문자(파이프·`;`·`&&`·`||`·`>`·개행) 앞까지만
+    보고, `-` 로 시작하는 토큰(플래그)은 제외한다. 값이 붙는 플래그(`tee -a`)의
+    값까지 걸러내지는 못하지만, 남는 비-플래그 토큰이 하나도 없으면 '경로를 못
+    찾음'으로 처리되어 안전한 쪽(거부)으로 떨어진다.
+    """
+    rest = cmd[match.end():]
+    boundary = COMMAND_ARGS_BOUNDARY.search(rest)
+    if boundary:
+        rest = rest[:boundary.start()]
+    return [t.strip("\"'") for t in rest.split() if t and not t.startswith("-")]
 
 
 def scope_text(prefixes):
@@ -278,11 +326,24 @@ def main():
                     cmd = " ".join(str(x) for x in v)
                     break
 
-        for pattern, label in MUTATING_COMMANDS:
+        for pattern, label in ALWAYS_DENY_COMMANDS:
             if pattern.search(cmd):
                 deny(f"[harness-architect] {role} 는 읽기 전용 역할입니다. "
                      f"{label} 을(를) 쓸 수 없습니다 — 쓰기 허용 범위: {scope_text(prefixes)}. "
                      f"명령: {cmd[:160]}")
+
+        for pattern, label in PATH_SCOPED_COMMANDS:
+            for m in pattern.finditer(cmd):
+                targets = command_targets(cmd, m)
+                if not targets:
+                    deny(f"[harness-architect] {role} 는 읽기 전용 역할입니다. "
+                         f"{label} 의 대상 경로를 확인할 수 없어 거부합니다 — "
+                         f"쓰기 허용 범위: {scope_text(prefixes)}. 명령: {cmd[:160]}")
+                for t in targets:
+                    if not allowed(t, prefixes):
+                        deny(f"[harness-architect] {role} 는 읽기 전용 역할입니다. "
+                             f"{label} 으로 '{t}' 에 쓸 수 없습니다 — "
+                             f"쓰기 허용 범위: {scope_text(prefixes)}. 명령: {cmd[:160]}")
 
         for target in REDIRECT.findall(cmd):
             if target.startswith("&"):
