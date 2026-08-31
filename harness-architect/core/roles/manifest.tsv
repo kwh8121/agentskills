@@ -1,0 +1,22 @@
+# 역할 카탈로그 — 하네스 중립 진실의 원천.
+#
+# 세 하네스의 어댑터(claude/.claude/agents, codex/.codex/agents, opencode/.opencode/agent)는
+# 전부 이 표에서 파생된다. scripts/check-adapters.py 가 그 일치를 강제한다.
+# references/catalog.md · scripts/validate-spec.py 의 CATALOG · scripts/checkpoint.py 의
+# CATALOG 와 같은 7종이어야 한다 (CLAUDE.md 의 불변식 표 참고).
+#
+# 열:
+#   id            에이전트 id. HarnessSpec 의 agents[].id 가 이 값을 쓴다.
+#   tier          fast | standard | deep — 하네스별 실제 모델은 references/adapters/*.md 의 tier_map 이 정한다.
+#   capabilities  read | search | edit | write | bash | dispatch (쉼표 구분, 하네스 중립 어휘)
+#   write_scope   가드가 허용하는 쓰기 경로. '*' 제한 없음 / '-' 전면 금지 / 그 밖은 경로 접두사.
+#                 scripts/guard-readonly.py 의 READONLY_ROLES 와 같아야 한다.
+#
+#id	tier	capabilities	write_scope
+implementer	standard	read,search,edit,write,bash	*
+reviewer	deep	read,search,bash,write	_workspace/
+dependency-mapper	standard	read,search,bash	-
+baseline-tester	standard	read,search,bash,write	*
+integrator	deep	read,search,edit,write,bash	*
+orchestrator	deep	read,bash,write,dispatch	_workspace/
+deployment-agent	standard	read,bash,write	*
