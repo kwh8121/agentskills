@@ -11,4 +11,5 @@ worktrees/
 # 이 저장소가 배포하는 어댑터는 harness-architect/{claude,codex,opencode}/ 에 있다.
 /.opencode/
 /.codex/
+/.claude/
 .omx/
