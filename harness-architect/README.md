@@ -1,7 +1,8 @@
 # harness-architect
 
-> 개발 업무를 자연어로 받아 **작업 복잡도에 맞는 최소 하네스를 매번 새로 고르는** Claude Code 스킬.
+> 개발 업무를 자연어로 받아 **작업 복잡도에 맞는 최소 하네스를 매번 새로 고르는** 스킬.
 > 버튼 색상 변경에 5인 팀을 붙이지 않고, 인증 마이그레이션을 단일 에이전트로 밀지 않는다.
+> **Claude Code · Codex · OpenCode 세 하네스에서 같은 판정·같은 계약으로 동작한다.**
 
 ```
 Task ──▶ harness-architect Skill ──▶ HarnessSpec ─┬→ Agent Catalog (7종)
@@ -15,63 +16,61 @@ Task ──▶ harness-architect Skill ──▶ HarnessSpec ─┬→ Agent Cat
 
 ## 설치
 
-이 폴더(`.claude/`)를 프로젝트 루트에 그대로 복사한다. 절대 경로 하드코딩이 없어
-통째로 복사하면 그대로 동작한다.
-
 ```bash
-cp -r harness-architect/.claude /path/to/your-project/
+bash install.sh /path/to/your-project                      # 하네스 자동 감지
+bash install.sh /path/to/your-project --harness codex      # 명시
 ```
 
-`.claude/settings.json` 은 덮어쓰지 말고 병합한다. 대상 프로젝트에 이미
-`hooks.PreToolUse` 가 있으면 아래 항목을 배열에 **추가**한다(교체 아님).
+`install.sh` 는 파일 복사만 한다(생성·컴파일 없음). 배치되는 것:
 
-```json
-{
-  "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash",
-  "hooks": [
-    {
-      "type": "command",
-      "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/skills/harness-architect/scripts/guard-readonly.py\"",
-      "timeout": 10
-    }
-  ]
-}
-```
+| 하네스 | 코어(스킬 본체) | 어댑터 |
+|---|---|---|
+| Claude Code | `.claude/skills/harness-architect/` | `.claude/agents/*.md` · `.claude/settings.json` |
+| Codex | `.codex/skills/harness-architect/` | `.codex/agents/*.toml` · `.codex/hooks.json` |
+| OpenCode | `.opencode/skills/harness-architect/` | `.opencode/agent/*.md` · `.opencode/plugin/harness-guard.js` |
+
+**이미 있는 설정 파일(`settings.json`·`hooks.json`)은 덮어쓰지 않는다.** 병합할 내용을 출력하므로
+손으로 합친다 — 대상 프로젝트의 기존 훅을 지우는 것이 설치 스크립트가 할 수 있는 최악의 일이다.
 
 ### 사전 요건
 
 | 요건 | 없으면 무엇이 끊기는가 |
 |---|---|
-| Claude Code (스킬·서브에이전트·훅 지원 버전) | 스킬 자체가 로드되지 않는다 |
-| Bash, POSIX `awk`/`grep` | `detect-stack.sh`·`run-gates.sh`·`gate-summary.sh` |
-| Python 3 | `validate-spec.py`, `guard-readonly.py` |
+| Bash, POSIX `awk`/`grep` | `detect-stack.sh`·`run-gates.sh`·`gate-summary.sh`·`detect-harness.sh` |
+| Python 3 | `validate-spec.py`, `guard-readonly.py`, `checkpoint.py`, `resume-check.py` |
 | **PyYAML** (`pip install pyyaml`) — 선택 | 없으면 `validate-spec.py` 가 exit 2 로 "검증 불가"를 알린다. 하네스는 계속 동작하지만 아래 "승인 게이트 확인" 항목을 사람이 대신 봐야 한다 |
-| [superpowers 플러그인](https://github.com/obra/superpowers) (6.3.0 기준) | H0 도 `verification-before-completion` 이 필수라 완전히 끊긴다. **Phase 1 이 감지해 exit 4 로 중단하고 설치 명령(`/plugin install superpowers@claude-plugins-official`)을 제시한다.** 매핑표는 `references/catalog.md` |
+| [superpowers](https://github.com/obra/superpowers) (필수 스킬 11종) | H0 도 `verification-before-completion` 이 필수라 완전히 끊긴다. **Phase 1 이 감지해 exit 4 로 중단하고 그 하네스의 설치 명령을 제시한다.** 매핑표는 `core/references/catalog.md` |
 | Linear MCP — 선택 | `tracking.provider: linear` 를 쓸 수 없다. `none` 으로 두면 그대로 동작한다 |
+
+하네스별 추가 요건:
+
+| 하네스 | 추가로 필요한 것 |
+|---|---|
+| Claude Code | 스킬·서브에이전트·훅을 지원하는 버전 |
+| Codex | `~/.codex/config.toml` 에 `[features] hooks = true`, `multi_agent = true`. **훅은 프로젝트 신뢰와 해시 승인 뒤에만 동작한다** |
+| OpenCode | `opencode.json` 의 `plugin` 배열에 `"./.opencode/plugin/harness-guard.js"` 등록 (없으면 선언적 경계만 남는다) |
 
 ### 설치 확인
 
 ```bash
-# superpowers preflight — 필수 스킬 11종이 있는지 확인 (없으면 목록을 알려준다)
-bash .claude/skills/harness-architect/scripts/check-superpowers.sh
+# 어댑터 3종이 같은 계약을 선언하는가 (저장소에서만 의미 있음)
+python3 core/scripts/check-adapters.py
 
-# 스택 감지 — 대상 프로젝트의 실제 검증 명령을 찾아내는지 확인
-# (superpowers 가 없으면 골격을 만들지 않고 exit 4 로 중단한다)
-bash .claude/skills/harness-architect/scripts/init-workspace.sh
+# 아래는 설치된 프로젝트에서. <skill_dir> 은 detect-harness.sh 가 알려준다
+bash <skill_dir>/scripts/detect-harness.sh
+bash <skill_dir>/scripts/check-superpowers.sh        # 필수 스킬 11종 확인
+bash <skill_dir>/scripts/init-workspace.sh           # 스택 감지 (exit 4 = superpowers 미설치)
 
-# HarnessSpec 예제 4종이 계약 검증기를 통과하는지 확인 (PyYAML 필요)
-for f in .claude/skills/harness-architect/examples/*.yaml; do
-  python3 .claude/skills/harness-architect/scripts/validate-spec.py "$f"
+for f in <skill_dir>/examples/*.yaml; do
+  python3 <skill_dir>/scripts/validate-spec.py "$f"
 done
 
-# 읽기 전용 가드가 실제로 걸리는지 확인
-echo '{"hook_event_name":"PreToolUse","agent_type":"reviewer","agent_id":"s1",
-       "tool_name":"Write","tool_input":{"file_path":"src/x.ts","content":"y"}}' \
-  | python3 .claude/skills/harness-architect/scripts/guard-readonly.py
+echo '{"agent_type":"reviewer","tool_name":"Write","tool_input":{"file_path":"src/x.ts"}}' \
+  | python3 <skill_dir>/scripts/guard-readonly.py
 ```
 
 마지막 명령은 `"permissionDecision": "deny"` 가 포함된 JSON 을 내야 한다. 아무 출력도 없으면
-`.claude/settings.json` 에 훅이 등록되지 않은 것이다.
+가드가 배선되지 않은 것이다 (하네스별 배선은 `core/references/adapters/<하네스>.md` 의 `guard`).
 
 ## 하네스 레벨 4종
 
@@ -88,18 +87,24 @@ echo '{"hook_event_name":"PreToolUse","agent_type":"reviewer","agent_id":"s1",
 
 ## 구성
 
-- `.claude/skills/harness-architect/SKILL.md` — Phase 0~5 오케스트레이터
-- `.claude/skills/harness-architect/references/` — 판정 기준 5종
-  (profiling / routing / catalog / context-budget / linear-tracking)
-- `.claude/skills/harness-architect/schemas/harness-spec.yaml` — 실행 계약 스키마
-- `.claude/skills/harness-architect/examples/` — H0~H3 판정 사례 4종
-- `.claude/skills/harness-architect/scripts/` —
-  `detect-stack.sh` / `run-gates.sh` / `init-workspace.sh` / `gate-summary.sh` /
-  `check-superpowers.sh` / `harness-paths.sh`(source 전용) (셸) +
-  `validate-spec.py` / `guard-readonly.py` (파이썬)
-- `.claude/agents/` × 7 — implementer / reviewer / dependency-mapper / baseline-tester /
-  integrator / orchestrator / deployment-agent
-- `.claude/settings.json` — 읽기 전용 가드 훅 등록
+```
+core/                          # 하네스와 무관한 한 벌
+  SKILL.md                     # Phase −2~5 오케스트레이터
+  references/                  # 판정 기준 (profiling / routing / catalog / context-budget / linear-tracking)
+  references/adapters/         # 하네스 계약서 3종 + 키 목록 README
+  roles/                       # 역할 본문 7종 + manifest.tsv (진실의 원천)
+  schemas/harness-spec.yaml    # 실행 계약 스키마
+  examples/                    # H0~H3 판정 사례 4종
+  scripts/                     # detect-harness / detect-stack / init-workspace / run-gates /
+                               # gate-summary / check-superpowers / harness-paths (셸)
+                               # validate-spec / guard-readonly / checkpoint / resume-check /
+                               # check-adapters (파이썬)
+claude/.claude/   codex/.codex/   opencode/.opencode/   # 어댑터 트리 3종
+install.sh                     # 하네스 감지 + 배치
+```
+
+**역할 정의의 진실의 원천은 `core/roles/manifest.tsv` 하나다.** 세 어댑터 트리의 역할 파일은
+거기서 파생되고, `scripts/check-adapters.py` 가 tier·도구 경계·본문 참조의 일치를 강제한다.
 
 ## 토큰을 아끼는 세 가지 장치
 
@@ -110,19 +115,20 @@ echo '{"hook_event_name":"PreToolUse","agent_type":"reviewer","agent_id":"s1",
    `full_repository_dump` 가 들어간다. 보고서는 본문이 아니라 경로로 넘긴다.
 3. **고정 카탈로그** — 역할 정의를 매번 새로 생성하지 않는다. 7종에서 고르기만 한다.
 
-## 도구 경계는 frontmatter + 훅으로 강제한다
+## 도구 경계는 역할 선언 + 훅으로 강제한다
 
-frontmatter 의 `tools` 가 1차 경계다 — `reviewer`·`orchestrator` 에 `Edit` 이 없고,
-`dependency-mapper` 에 `Write` 가 없다. 하지만 `Edit` 을 빼도 `Write` 로 새 파일을,
-`Bash` 로 `sed -i`·리다이렉션을 쓸 수 있다. `guard-readonly.py` 를 `PreToolUse` 훅으로
-걸어 **쓰기 대상 경로**로 2차 판정한다.
+역할 선언(`capabilities`)이 1차 경계다 — `reviewer`·`orchestrator` 에 편집 능력이 없고,
+`dependency-mapper` 에 쓰기 능력이 없다. 하지만 편집을 빼도 쓰기로 새 파일을, 셸로
+`sed -i`·리다이렉션을 쓸 수 있다. `guard-readonly.py` 가 **쓰기 대상 경로**로 2차 판정한다.
 
-| 역할 | 쓰기 허용 범위 |
+| 역할 | 쓰기 허용 범위 (`roles/manifest.tsv` 의 `write_scope`) |
 |---|---|
 | `reviewer` · `orchestrator` | `_workspace/` 아래만 |
 | `dependency-mapper` | 없음 (조사 전용) |
 | `implementer` · `integrator` · `baseline-tester` · `deployment-agent` | 가드 대상 아님 |
 
+**강제 수준은 하네스마다 다르다** — Codex 는 훅 승인 전까지, OpenCode 는 플러그인 등록 전까지
+셸 우회를 막지 못한다. 하네스별 표는 `core/references/catalog.md`.
 훅은 셸을 파싱하지 않고 쓰기 구문을 패턴으로 찾는다. **샌드박스가 아니라 규율 장치다.**
 
 ## HarnessSpec 은 실행 전에 기계가 검증한다
@@ -139,6 +145,28 @@ python3 .claude/skills/harness-architect/scripts/validate-spec.py \
 **수용 기준에 대응하는 게이트 부재**, Human Gate 누락, H3 재라우팅 계약(`escalation`) 누락,
 `full_repository_dump` 금지 누락, 루프·워커 상한 초과를 거부한다.
 `yaml.safe_load` 성공은 "문법이 YAML 이다" 만 말해 준다는 것이 이 검증기를 만든 이유다.
+
+## 중단하면 재개한다
+
+Phase 전환·역할 완료마다 `checkpoint.py` 가 `_workspace/harness/state.json` 에 진행을 기록하고,
+다음 세션의 Phase −1 이 `resume-check.py` 로 판정한다.
+
+| exit | 뜻 | 스킬이 하는 일 |
+|---|---|---|
+| 0 | 재개할 것 없음 | Phase 0 으로 간다 |
+| 10 | 자동 재개 후보 (Phase ≤ 2, 불일치 없음) | 브리핑의 `작업:` 이 지금 요청과 같은지 확인하고 이어간다 |
+| 11 | **사람 판단** — Phase 3 이상 / 불일치 / state 손상 / **하네스 변경** | 브리핑을 제시하고 멈춘다. 재개·재판정·폐기 중 사용자가 고른다 |
+| 12 | 완료된 이전 작업이 남아 있음 | 새 작업을 시작할지 묻고 `--archive` 로 보존한다 |
+
+불일치로 보는 것: HEAD·브랜치 변경, worktree 제거, 작업 트리 변경, **승인된 spec.yaml 변조**,
+그리고 **state 에 기록된 하네스와 지금 하네스가 다른 경우**.
+
+**승인은 세션을 넘어 상속되지 않는다.** Phase 3 이상에서 재개하면 `approved: true` 가 남아
+있어도 새로 승인받는다 — 기록은 사실이지 실행 권한이 아니다. 하네스가 바뀌면 dispatch 문법·
+모델·가드 강제 수준이 전부 달라지므로 같은 이유로 다시 승인받는다.
+
+**손상된 state 는 추측으로 복구하지 않는다.** `resume-check.py` 는 exit 11 로, `checkpoint.py` 는
+exit 3 으로 멈추고 원본을 보존한다.
 
 ## 진행 상황은 Linear 에 남길 수 있다
 
@@ -194,6 +222,17 @@ Phase 3 에서 승인을 요청받으면 다음을 확인한다.
 
 - 읽기 전용 가드 훅은 셸을 파싱하지 않아 변수 확장·인터프리터 경유 우회가 가능하다
   (규율 장치이지 샌드박스가 아니다)
+- **Codex**: 등록되지 않은 프로젝트 훅은 신뢰된 경로에서도 조용히 무시된다(실측 확인).
+  `scripts/codex-hook-trust.py` 가 `~/.codex/config.toml` 에 붙일 신뢰 블록을 만들어 주지만,
+  **붙이기 전까지는 읽기 전용 경계가 프롬프트 준수에만 의존한다** (Codex 는 역할별 도구 목록도
+  강제하지 않는다). 신뢰 블록을 붙인 뒤 훅이 실제로 발화하는지는 아직 실측하지 않았다
+- **MCP 쓰기 도구**: 가드는 도구 *이름 패턴*(write/edit/patch/replace/…)으로 MCP 쓰기를
+  판정한다. 실제로 `serena_replace_content` 가 이 경로로 새어 파일이 수정되는 것을 관측해
+  고쳤다. **그 어휘를 쓰지 않는 MCP 쓰기 도구는 여전히 통과한다**
+- **OpenCode**: `tool.execute.before` 에 역할 정보가 없어 플러그인이 `chat.params` 로
+  세션→역할 맵을 만들어 조회한다. 그 훅이 먼저 돌지 않은 도구 호출은 가드를 통과한다
+- 어댑터의 `tier_map` 모델 이름은 설치 환경의 모델 허용 목록에 따라 달라진다.
+  거부되면 어댑터 표와 역할 파일을 함께 고친다 (`check-adapters.py` 가 불일치를 잡는다)
 - Linear API(`get_issue`/`get_project`)가 `blockedBy`·진행률(%)을 응답 필드로 노출하지
   않아 해당 항목은 자동 검증 대신 사용자 육안 확인에 의존한다
 - H2 경로(Fan-out/Fan-in)와 Phase 4 의 실제 에이전트 dispatch 는 다양한 실전 사례로
