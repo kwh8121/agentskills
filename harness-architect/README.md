@@ -29,8 +29,20 @@ bash install.sh /path/to/your-project --harness codex      # 명시
 | Codex | `.codex/skills/harness-architect/` | `.codex/agents/*.toml` · `.codex/hooks.json` |
 | OpenCode | `.opencode/skills/harness-architect/` | `.opencode/agent/*.md` · `.opencode/plugin/harness-guard.js` |
 
-**이미 있는 설정 파일(`settings.json`·`hooks.json`)은 덮어쓰지 않는다.** 병합할 내용을 출력하므로
-손으로 합친다 — 대상 프로젝트의 기존 훅을 지우는 것이 설치 스크립트가 할 수 있는 최악의 일이다.
+**이미 있는 설정 파일(`settings.json`·`hooks.json`·`opencode.json`)은 덮어쓰지 않고
+우리 항목만 추가한다** (`scripts/merge-config.py`). 대상 프로젝트의 기존 훅을 지우는 것이
+설치 스크립트가 할 수 있는 최악의 일이므로, 병합 규칙을 좁게 잡았다:
+
+| 상황 | 동작 |
+|---|---|
+| 기존 훅이 있다 | 그대로 두고 우리 그룹을 **뒤에 추가**한다 |
+| 우리 훅이 이미 있다 | 중복 추가하지 않는다. 정의가 바뀌었으면 **그 항목만 갱신**한다 |
+| 바꾸기 전 | `<파일>.bak-<타임스탬프>` 로 백업한다 |
+| 대상이 깨진 JSON 이다 | **손대지 않고** 붙일 내용을 출력한다 — 추측으로 고치지 않는다 |
+| `--no-merge` | 기존 파일을 건드리지 않고 출력만 한다 |
+
+`opencode.json` 은 **있을 때만** `plugin` 배열에 더한다. 없으면 만들지 않는다 —
+프로젝트 설정 파일을 새로 만들면 모델 해석 등 다른 동작에 영향을 줄 수 있다.
 
 ### 사전 요건
 

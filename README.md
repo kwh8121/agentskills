@@ -17,7 +17,11 @@ git clone --depth 1 https://github.com/kwh8121/agentskills.git /tmp/agentskills
 cd /path/to/your-project
 bash /tmp/agentskills/harness-architect/install.sh .                      # 하네스 자동 감지
 bash /tmp/agentskills/harness-architect/install.sh . --harness codex      # 명시
+bash /tmp/agentskills/harness-architect/install.sh . --no-merge           # 기존 설정을 건드리지 않음
 ```
+
+기존 설정 파일은 **덮어쓰지 않고 우리 항목만 추가**한다. 백업(`.bak-<타임스탬프>`)을 남기고,
+재실행해도 중복되지 않으며, 깨진 JSON 은 손대지 않고 붙일 내용을 출력한다.
 
 배치되는 것과 **하네스별로 반드시 해야 하는 후속 조치**:
 
@@ -26,20 +30,20 @@ bash /tmp/agentskills/harness-architect/install.sh . --harness codex      # 명�
 <tr>
 <td><b>Claude Code</b></td>
 <td><code>.claude/skills/harness-architect/</code><br><code>.claude/agents/*.md</code><br><code>.claude/settings.json</code></td>
-<td>없음. <code>settings.json</code> 이 이미 있으면 install.sh 가 <b>덮어쓰지 않고</b> 병합할 훅 블록을 출력하므로 손으로 합친다.</td>
+<td>없음. <code>settings.json</code> 이 이미 있으면 install.sh 가 <b>덮어쓰지 않고 우리 훅만 추가</b>한다(백업 후 병합, 재실행해도 중복 없음).</td>
 </tr>
 <tr>
 <td><b>Codex</b></td>
 <td><code>.codex/skills/harness-architect/</code><br><code>.codex/agents/*.toml</code><br><code>.codex/hooks.json</code></td>
 <td>
 ① <code>~/.codex/config.toml</code> 에 <code>[features] hooks = true</code>, <code>multi_agent = true</code><br>
-② <b>훅 신뢰 등록</b> — install.sh 가 출력하는 <code>[hooks.state.…]</code> 블록을 <code>~/.codex/config.toml</code> 끝에 붙인다. <b>등록되지 않은 프로젝트 훅은 신뢰된 경로에서도 조용히 무시된다.</b>
+② <b>훅 신뢰 등록</b> — install.sh 가 출력하는 <code>[hooks.state.…]</code> 블록을 <code>~/.codex/config.toml</code> 끝에 붙인다. <b>등록되지 않은 프로젝트 훅은 신뢰된 경로에서도 조용히 무시된다.</b> <code>hooks.json</code> 은 이미 있으면 자동 병합되고, 신뢰 블록도 병합 결과 기준으로 다시 계산된다.
 </td>
 </tr>
 <tr>
 <td><b>OpenCode</b></td>
 <td><code>.opencode/skills/harness-architect/</code><br><code>.opencode/agent/*.md</code><br><code>.opencode/plugin/harness-guard.js</code></td>
-<td><code>opencode.json</code> 의 <code>plugin</code> 배열에 <code>"./.opencode/plugin/harness-guard.js"</code> 등록. 안 하면 1차 경계(역할 파일의 <code>tools</code>/<code>permission</code>)만 남고 셸·MCP 우회가 열린다.</td>
+<td><code>opencode.json</code> 이 <b>있으면 install.sh 가 <code>plugin</code> 배열에 자동 등록</b>한다. 없으면 만들지 않으므로 직접 만든다 — 등록하지 않으면 1차 경계(역할 파일의 <code>tools</code>/<code>permission</code>)만 남고 셸·MCP 우회가 열린다.</td>
 </tr>
 </table>
 

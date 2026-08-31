@@ -89,6 +89,7 @@ permission:
 `core/roles/manifest.tsv` 의 `capabilities` 가 이 맵을 결정한다.
 
 **2차 — 플러그인 훅 (`.opencode/plugin/harness-guard.js`).** 경로 기준 판정을 더한다.
+`opencode.json` 이 이미 있으면 `install.sh` 가 `plugin` 배열에 자동 등록한다 (없으면 만들지 않는다 — 프로젝트 설정 파일 신규 생성은 다른 동작에 영향을 줄 수 있다).
 
 - `chat.params` / `chat.headers` 훅이 `{sessionID, agent}` 를 주므로 여기서
   세션→역할 맵을 만든다.

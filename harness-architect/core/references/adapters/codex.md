@@ -90,6 +90,7 @@ Codex 플러그인으로 설치하면 필수 11종이 그대로 들어온다.
 ## guard
 
 `.codex/hooks.json` 에 등록한다. **이벤트 이름과 JSON 구조가 Claude Code 와 같다.**
+`install.sh` 가 기존 파일에 이 항목만 추가하고, 신뢰 블록도 병합 결과의 인덱스로 다시 계산한다.
 
 ```json
 {

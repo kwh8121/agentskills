@@ -2,7 +2,11 @@
 """codex-hook-trust.py — Codex 훅을 신뢰 등록하는 TOML 블록을 만든다.
 
 사용법:
-    python3 codex-hook-trust.py <hooks.json 경로>
+    python3 codex-hook-trust.py <hooks.json 경로> [--all]
+
+    기본값은 **harness-architect 가 건 훅만** 출력한다. 같은 파일에 있는 사용자의 다른 훅까지
+    신뢰 블록에 넣으면, 붙여 넣는 사람이 의도하지 않은 훅까지 신뢰하게 된다. `--all` 은
+    파일 안의 모든 훅을 낸다.
 
 왜 필요한가:
     Codex 는 `~/.codex/config.toml` 에 `[hooks.state."<경로>:<이벤트>:<i>:<j>"]` 항목이 있고
@@ -46,6 +50,9 @@ EVENT_KEY = {
 DEFAULT_ASYNC = False
 DEFAULT_TIMEOUT = 600
 
+# 우리 훅을 알아보는 표식. merge-config.py 의 MARKER 와 같아야 한다.
+MARKER = "harness-architect/scripts/guard-readonly.py"
+
 
 def identity_hash(event_key, hook, matcher):
     payload = {
@@ -68,6 +75,7 @@ def main():
         print(__doc__.strip().splitlines()[2], file=sys.stderr)
         return EXIT_USAGE
 
+    only_ours = "--all" not in sys.argv[1:]
     path = os.path.abspath(sys.argv[1])
     try:
         with open(path, encoding="utf-8") as fh:
@@ -82,6 +90,8 @@ def main():
         for gi, group in enumerate(groups or []):
             matcher = group.get("matcher")
             for hi, hook in enumerate(group.get("hooks") or []):
+                if only_ours and MARKER not in str(hook.get("command", "")):
+                    continue
                 key = f"{path}:{event_key}:{gi}:{hi}"
                 lines.append(f'[hooks.state."{key}"]')
                 lines.append(f'trusted_hash = "{identity_hash(event_key, hook, matcher)}"')
@@ -89,7 +99,8 @@ def main():
                 lines.append("")
 
     if not lines:
-        print("codex-hook-trust: 등록할 훅이 없습니다.", file=sys.stderr)
+        where = "harness-architect 훅이" if only_ours else "훅이"
+        print(f"codex-hook-trust: {path} 에 등록할 {where} 없습니다.", file=sys.stderr)
         return EXIT_USAGE
 
     print("# ~/.codex/config.toml 끝에 붙여 넣으십시오. 붙이기 전까지 가드는 동작하지 않습니다.")

@@ -13,8 +13,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 에이전트 하네스용 **스킬 모음**이다. 애플리케이션이 아니라 배포 산출물의 저장소다.
 
 - 최상위 폴더 하나 = 독립적으로 설치 가능한 스킬 하나. 현재는 `harness-architect/` 뿐이다.
-- 설치는 복사다: `bash harness-architect/install.sh <대상> [--harness claude|codex|opencode]`.
-  스크립트가 하는 일은 파일 복사뿐이고 **빌드·생성 단계가 없다.**
+- 설치는 `bash harness-architect/install.sh <대상> [--harness claude|codex|opencode]` 다.
+  하는 일은 **파일 복사 + 기존 설정 파일에 우리 항목 추가**뿐이고 **빌드·생성 단계가 없다.**
+  설정 병합은 `scripts/merge-config.py` 가 하며 덮어쓰지 않는다 (백업 후 추가, 멱등,
+  깨진 JSON 은 손대지 않음, `--no-merge` 로 끌 수 있음).
 - **절대 경로 하드코딩 금지.** 모든 스크립트·문서·frontmatter 경로는 상대 경로여야
   통째로 복사했을 때 대상 저장소에서 그대로 동작한다. `$CLAUDE_PROJECT_DIR` 은 예외.
 - 런타임: Bash + POSIX `awk`/`grep`, Python 3, 선택적 PyYAML. 패키지 매니저·의존성 파일 없음.
@@ -153,6 +155,7 @@ harness-architect 는 "진실의 원천"이 코드·스키마·문서·테스트
 | 레벨↔필수 controller 스킬 (`LEVEL_REQUIRED_CONTROLLER_SKILLS`) | `core/scripts/validate-spec.py` · `core/references/routing.md` H2/H3 절차 · `core/references/catalog.md` 매핑표 · `core/examples/h2-*.yaml`·`h3-*.yaml` |
 | 게이트 tier 3종 (`fast`/`feature`/`final`) 과 스크립트 이름→tier 매핑 | `core/scripts/detect-stack.sh` · `core/scripts/run-gates.sh` · `core/scripts/validate-spec.py` 의 `TIERS` (에이전트 tier `TIERS_MODEL` 과 혼동 금지) |
 | 읽기 전용 역할과 쓰기 허용 범위 | `core/roles/manifest.tsv` 의 `write_scope` **(원천)** · `core/scripts/guard-readonly.py` 가 이 파일을 읽는다(`DEFAULT_SCOPES` 는 폴백) · `core/references/catalog.md` 강제 수준 표 |
+| 우리 훅을 알아보는 표식 (`MARKER` = `harness-architect/scripts/guard-readonly.py`) | `core/scripts/merge-config.py` · `core/scripts/codex-hook-trust.py` — 병합 멱등성과 신뢰 블록 필터가 같은 문자열에 의존한다 |
 | 필수 superpowers 스킬 목록 (`REQUIRED_SKILLS`) | `core/scripts/check-superpowers.sh` · `core/scripts/validate-spec.py` 의 `ALLOWED_SKILLS`(내장 `security-review` 제외) · `core/references/catalog.md` 매핑표 |
 | superpowers 탐지 경로·설치 명령 | `core/references/adapters/<하네스>.md` 의 `superpowers_roots` **(원천)** · `core/scripts/check-superpowers.sh` 의 `candidates` · `core/scripts/init-workspace.sh` 의 exit 4 안내 |
 

@@ -71,6 +71,7 @@ ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins
 ## guard
 
 `.claude/settings.json` 의 `hooks.PreToolUse` 에 등록한다.
+`install.sh` 가 기존 파일에 이 항목만 추가한다(덮어쓰지 않는다).
 
 ```json
 {

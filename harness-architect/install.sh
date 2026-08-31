@@ -2,27 +2,31 @@
 # install.sh — harness-architect 를 대상 프로젝트에 배치한다.
 #
 # 사용법:
-#   bash install.sh <대상_디렉터리> [--harness claude|codex|opencode] [--force]
+#   bash install.sh <대상_디렉터리> [--harness claude|codex|opencode] [--force] [--no-merge]
 #
 # 하는 일은 파일 복사뿐이다(생성·컴파일 없음):
 #   core/                     → <대상>/<하네스 디렉터리>/skills/harness-architect/
 #   <하네스>/<하네스 디렉터리>/ → <대상>/<하네스 디렉터리>/            (역할 정의·훅 배선)
 #
-# 이미 있는 설정 파일(settings.json / hooks.json / opencode.json)은 **덮어쓰지 않는다.**
-# 병합해야 할 내용을 출력하고 넘어간다 — 대상 프로젝트의 기존 훅을 지우는 것이
-# 이 스크립트가 할 수 있는 가장 나쁜 일이다.
+# 이미 있는 설정 파일(settings.json / hooks.json / opencode.json)은 **덮어쓰지 않고
+# 우리 항목만 추가한다** (scripts/merge-config.py). 기존 훅은 그대로 두고, 우리 훅이
+# 이미 있으면 정의만 갱신한다. 바꾸기 전에 .bak-<타임스탬프> 를 남긴다.
+# 깨진 JSON 은 손대지 않고 붙일 내용을 출력한다 — 추측으로 고치지 않는다.
+# --no-merge 를 주면 기존 파일을 건드리지 않고 출력만 한다.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET=""
 HARNESS=""
 FORCE=0
+NO_MERGE=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --harness) HARNESS="${2:-}"; shift 2 ;;
-        --force)   FORCE=1; shift ;;
-        -h|--help) sed -n '2,14p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        --harness)  HARNESS="${2:-}"; shift 2 ;;
+        --force)    FORCE=1; shift ;;
+        --no-merge) NO_MERGE=1; shift ;;
+        -h|--help) sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 0 ;;
         *)         TARGET="$1"; shift ;;
     esac
 done
@@ -92,16 +96,32 @@ done < <(find "$SRC" -type f -print0)
 
 echo "  어댑터:   $DEST (역할 $(find "$SRC" -type f \( -name '*.md' -o -name '*.toml' \) | wc -l)종 + 배선)"
 
-# ── 3) 병합이 필요한 것 ────────────────────────────────────────────────────
-if [[ "${#pending_merge[@]}" -gt 0 ]]; then
-    echo ""
-    echo "  ⚠ 아래 파일은 이미 있어서 덮어쓰지 않았습니다. 손으로 병합하십시오:"
-    for rel in "${pending_merge[@]}"; do
+# ── 3) 이미 있는 설정 파일에 우리 항목만 추가한다 ──────────────────────────
+MERGE="python3 $SKILL_DEST/scripts/merge-config.py"
+
+for rel in "${pending_merge[@]}"; do
+    dst="$DEST/$rel"
+    if [[ "$NO_MERGE" -eq 1 ]]; then
         echo ""
-        echo "    대상: $DEST/$rel"
-        echo "    ── 병합할 내용 ──"
+        echo "  ⚠ --no-merge: $dst 를 건드리지 않았습니다. 아래를 손으로 합치십시오:"
         sed 's/^/    /' "$SRC/$rel"
-    done
+        continue
+    fi
+
+    $MERGE --hooks "$dst" "$SRC/$rel"
+    case $? in
+        0|1) echo "  설정:     $dst (기존 항목 보존)" ;;
+        *)   echo ""
+             echo "  ⚠ $dst 를 자동 병합하지 못했습니다. 아래를 손으로 합치십시오:"
+             sed 's/^/    /' "$SRC/$rel" ;;
+    esac
+done
+
+# OpenCode 는 프로젝트의 opencode.json 에 플러그인을 등록해야 가드가 산다.
+# 파일이 없으면 만들지 않는다 — 프로젝트 설정 파일을 새로 만드는 것은 모델 해석 등
+# 다른 동작에 영향을 줄 수 있어서, 있는 파일에 더하기만 한다.
+if [[ "$HARNESS" == "opencode" && "$NO_MERGE" -eq 0 && -f "$TARGET/opencode.json" ]]; then
+    $MERGE --opencode-plugin "$TARGET/opencode.json" "./.opencode/plugin/harness-guard.js"
 fi
 
 # ── 4) 하네스별 후속 조치 ──────────────────────────────────────────────────
@@ -138,8 +158,10 @@ NEXT
         ;;
     opencode)
         cat <<'NEXT'
-  1. opencode.json 의 plugin 배열에 로컬 플러그인을 등록하십시오:
-       "plugin": ["./.opencode/plugin/harness-guard.js"]
+  1. opencode.json 의 plugin 배열에 로컬 플러그인이 등록돼야 가드가 삽니다.
+     opencode.json 이 이미 있으면 위에서 자동으로 추가했습니다. 없으면 만드십시오:
+       { "$schema": "https://opencode.ai/config.json",
+         "plugin": ["./.opencode/plugin/harness-guard.js"] }
      등록하지 않으면 1차 경계(역할 파일의 tools/permission)만 남습니다.
   2. 역할 7종이 보이는지 확인:
        opencode agent
