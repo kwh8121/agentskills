@@ -51,8 +51,8 @@ non-zero 로 종료하므로 위처럼 `&&` 로 이어도 안전하다.
 </tr>
 <tr>
 <td><b>OpenCode</b></td>
-<td><code>.opencode/skills/harness-architect/</code><br><code>.opencode/agent/*.md</code><br><code>.opencode/plugin/harness-guard.js</code></td>
-<td><code>opencode.json</code> 이 <b>있으면 install.sh 가 <code>plugin</code> 배열에 자동 등록</b>한다. 없으면 만들지 않으므로 직접 만든다 — 등록하지 않으면 1차 경계(역할 파일의 <code>tools</code>/<code>permission</code>)만 남고 셸·MCP 우회가 열린다.</td>
+<td><code>.opencode/skills/harness-architect/</code><br><code>.opencode/agent/*.md</code><br><code>.opencode/plugin/harness-guard.js</code><br><code>opencode.json</code></td>
+<td>없음. install.sh 가 <code>opencode.json</code> 의 <code>plugin</code> 배열에 <code>harness-guard.js</code> 를 등록한다 — <b>있으면 병합, 없으면 최소 파일(<code>$schema</code>+<code>plugin</code>) 생성</b>. OpenCode 는 플러그인을 자동 로드하지 않아 등록이 없으면 2차 가드(셸·MCP 우회 차단)가 죽는다. <code>--no-merge</code> 면 생성을 생략하므로 직접 등록해야 한다.</td>
 </tr>
 </table>
 

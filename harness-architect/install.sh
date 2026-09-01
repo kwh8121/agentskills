@@ -4,7 +4,7 @@
 # 사용법:
 #   bash install.sh <대상_디렉터리> [--harness claude|codex|opencode] [--force] [--no-merge]
 #
-# 하는 일은 파일 복사뿐이다(생성·컴파일 없음):
+# 하는 일은 파일 복사와 설정 병합이다(컴파일·코드 생성 없음):
 #   core/                     → <대상>/<하네스 디렉터리>/skills/harness-architect/
 #   <하네스>/<하네스 디렉터리>/ → <대상>/<하네스 디렉터리>/            (역할 정의·훅 배선)
 #
@@ -12,7 +12,9 @@
 # 우리 항목만 추가한다** (scripts/merge-config.py). 기존 훅은 그대로 두고, 우리 훅이
 # 이미 있으면 정의만 갱신한다. 바꾸기 전에 .bak-<타임스탬프> 를 남긴다.
 # 깨진 JSON 은 손대지 않고 붙일 내용을 출력한다 — 추측으로 고치지 않는다.
-# --no-merge 를 주면 기존 파일을 건드리지 않고 출력만 한다.
+# opencode.json 이 없으면 가드 플러그인만 담은 최소 파일을 만든다 (OpenCode 는 플러그인을
+# 자동 로드하지 않아, 등록이 없으면 2차 가드가 통째로 죽기 때문).
+# --no-merge 를 주면 기존 파일을 건드리지 않고, opencode.json 도 만들지 않는다.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,7 +28,7 @@ while [[ $# -gt 0 ]]; do
         --harness)  HARNESS="${2:-}"; shift 2 ;;
         --force)    FORCE=1; shift ;;
         --no-merge) NO_MERGE=1; shift ;;
-        -h|--help) sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 0 ;;
+        -h|--help) sed -n '2,17p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 0 ;;
         *)         TARGET="$1"; shift ;;
     esac
 done
@@ -128,11 +130,24 @@ for rel in "${pending_merge[@]}"; do
     esac
 done
 
-# OpenCode 는 프로젝트의 opencode.json 에 플러그인을 등록해야 가드가 산다.
-# 파일이 없으면 만들지 않는다 — 프로젝트 설정 파일을 새로 만드는 것은 모델 해석 등
-# 다른 동작에 영향을 줄 수 있어서, 있는 파일에 더하기만 한다.
-if [[ "$HARNESS" == "opencode" && "$NO_MERGE" -eq 0 && -f "$TARGET/opencode.json" ]]; then
-    $MERGE --opencode-plugin "$TARGET/opencode.json" "./.opencode/plugin/harness-guard.js"
+# OpenCode 는 프로젝트의 opencode.json 의 plugin 배열에 등록해야 가드가 산다.
+# OpenCode 는 .opencode/plugin/*.js 를 자동 로드하지 않으므로, 등록이 없으면 2차 가드
+# (bash 우회·MCP 쓰기 차단)가 통째로 죽는다. 있으면 병합하고, 없으면 가드 플러그인만
+# 담은 최소 파일을 만든다 ($schema + plugin 두 키뿐이라 모델·프로바이더 해석에 영향 없음).
+if [[ "$HARNESS" == "opencode" && "$NO_MERGE" -eq 0 ]]; then
+    if [[ -f "$TARGET/opencode.json" ]]; then
+        $MERGE --opencode-plugin "$TARGET/opencode.json" "./.opencode/plugin/harness-guard.js"
+    else
+        cat > "$TARGET/opencode.json" <<'JSON'
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    "./.opencode/plugin/harness-guard.js"
+  ]
+}
+JSON
+        echo "  설정:     $TARGET/opencode.json 생성 (가드 플러그인 등록)"
+    fi
 fi
 
 # ── 3.5) 배치 검증 ────────────────────────────────────────────────────────
@@ -169,6 +184,18 @@ if [[ "${#missing[@]}" -gt 0 ]]; then
 fi
 echo "  검증:     핵심 산출물 · 역할 ${roles_ok}종 확인"
 
+# OpenCode 2차 가드가 실제로 배선됐는지 — opencode.json 의 plugin 에 등록됐는가.
+# 기본 경로에서는 위에서 만들거나 병합했으므로 통과한다. --no-merge 이거나 opencode.json
+# 이 깨져 병합이 막힌 경우에만 경고가 뜬다 (선언적 1차 경계는 그대로 살아 있다).
+if [[ "$HARNESS" == "opencode" ]]; then
+    if [[ -f "$TARGET/opencode.json" ]] && grep -q "harness-guard.js" "$TARGET/opencode.json" 2>/dev/null; then
+        echo "  가드:     opencode.json 에 플러그인 등록됨 (2차 경계 활성)"
+    else
+        echo "  ⚠ 가드:   opencode.json 에 플러그인이 등록되지 않았습니다 — 2차 경계(bash 우회·MCP 쓰기 차단)가 비활성입니다." >&2
+        echo "            opencode.json 의 plugin 배열에 \"./.opencode/plugin/harness-guard.js\" 를 넣으십시오." >&2
+    fi
+fi
+
 # ── 4) 하네스별 후속 조치 ──────────────────────────────────────────────────
 echo ""
 echo "install: 배치 완료. 남은 확인 사항:"
@@ -203,8 +230,9 @@ NEXT
         ;;
     opencode)
         cat <<'NEXT'
-  1. opencode.json 의 plugin 배열에 로컬 플러그인이 등록돼야 가드가 삽니다.
-     opencode.json 이 이미 있으면 위에서 자동으로 추가했습니다. 없으면 만드십시오:
+  1. 가드 플러그인 등록 확인 — 위 "가드:" 줄이 "활성" 이어야 합니다.
+     install.sh 가 opencode.json 을 병합(있던 경우)하거나 최소 파일로 생성(없던 경우)했습니다.
+     --no-merge 로 깔았거나 경고가 떴으면 opencode.json 의 plugin 배열에 직접 넣으십시오:
        { "$schema": "https://opencode.ai/config.json",
          "plugin": ["./.opencode/plugin/harness-guard.js"] }
      등록하지 않으면 1차 경계(역할 파일의 tools/permission)만 남습니다.
