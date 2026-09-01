@@ -12,16 +12,25 @@
 ## 설치
 
 ```bash
-git clone --depth 1 https://github.com/kwh8121/agentskills.git /tmp/agentskills
+# 클론과 설치는 한 줄로 잇는다 — 클론이 실패하면 install.sh 도 돌지 않게.
+# 대상 경로는 인자로 넘긴다(cd 불필요). 임시 디렉터리는 재실행 대비 먼저 지운다
+# (git clone 은 비어있지 않은 대상에 exit 128 로 실패한다).
+rm -rf /tmp/agentskills && \
+git clone --depth 1 https://github.com/kwh8121/agentskills.git /tmp/agentskills && \
+bash /tmp/agentskills/harness-architect/install.sh /path/to/your-project              # 하네스 자동 감지
 
-cd /path/to/your-project
-bash /tmp/agentskills/harness-architect/install.sh .                      # 하네스 자동 감지
-bash /tmp/agentskills/harness-architect/install.sh . --harness codex      # 명시
-bash /tmp/agentskills/harness-architect/install.sh . --no-merge           # 기존 설정을 건드리지 않음
+#   ... install.sh /path/to/your-project --harness codex      # 하네스 명시
+#   ... install.sh /path/to/your-project --no-merge           # 기존 설정을 건드리지 않음
 ```
+
+`install.sh` 는 소스 트리가 온전한지(부분 클론 방지) 먼저 확인하고, 배치가 끝나면
+**기대 산출물이 실제로 생겼는지 검증한 뒤에** 성공을 알린다. 어느 쪽이든 실패하면
+non-zero 로 종료하므로 위처럼 `&&` 로 이어도 안전하다.
 
 기존 설정 파일은 **덮어쓰지 않고 우리 항목만 추가**한다. 백업(`.bak-<타임스탬프>`)을 남기고,
 재실행해도 중복되지 않으며, 깨진 JSON 은 손대지 않고 붙일 내용을 출력한다.
+`.claude/` · `.codex/` · `.opencode/` 디렉터리가 **이미 있어도 안전하다** — 기존 역할 파일·
+플러그인·설정은 보존되고, 배치 경로(아래 표)는 현재 설치본의 정식 출력이다.
 
 배치되는 것과 **하네스별로 반드시 해야 하는 후속 조치**:
 
@@ -42,8 +51,8 @@ bash /tmp/agentskills/harness-architect/install.sh . --no-merge           # 기�
 </tr>
 <tr>
 <td><b>OpenCode</b></td>
-<td><code>.opencode/skills/harness-architect/</code><br><code>.opencode/agent/*.md</code><br><code>.opencode/plugin/harness-guard.js</code></td>
-<td><code>opencode.json</code> 이 <b>있으면 install.sh 가 <code>plugin</code> 배열에 자동 등록</b>한다. 없으면 만들지 않으므로 직접 만든다 — 등록하지 않으면 1차 경계(역할 파일의 <code>tools</code>/<code>permission</code>)만 남고 셸·MCP 우회가 열린다.</td>
+<td><code>.opencode/skills/harness-architect/</code><br><code>.opencode/agent/*.md</code><br><code>.opencode/plugin/harness-guard.js</code><br><code>opencode.json</code></td>
+<td>없음. install.sh 가 <code>opencode.json</code> 의 <code>plugin</code> 배열에 <code>harness-guard.js</code> 를 등록한다 — <b>있으면 병합, 없으면 최소 파일(<code>$schema</code>+<code>plugin</code>) 생성</b>. OpenCode 는 플러그인을 자동 로드하지 않아 등록이 없으면 2차 가드(셸·MCP 우회 차단)가 죽는다. <code>--no-merge</code> 면 생성을 생략하므로 직접 등록해야 한다.</td>
 </tr>
 </table>
 

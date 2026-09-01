@@ -14,9 +14,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - 최상위 폴더 하나 = 독립적으로 설치 가능한 스킬 하나. 현재는 `harness-architect/` 뿐이다.
 - 설치는 `bash harness-architect/install.sh <대상> [--harness claude|codex|opencode]` 다.
-  하는 일은 **파일 복사 + 기존 설정 파일에 우리 항목 추가**뿐이고 **빌드·생성 단계가 없다.**
+  하는 일은 **파일 복사 + 설정 파일 병합**뿐이고 **빌드 단계가 없다.**
   설정 병합은 `scripts/merge-config.py` 가 하며 덮어쓰지 않는다 (백업 후 추가, 멱등,
-  깨진 JSON 은 손대지 않음, `--no-merge` 로 끌 수 있음).
+  깨진 JSON 은 손대지 않음, `--no-merge` 로 끌 수 있음). 유일한 예외로,
+  프로젝트에 `opencode.json` 이 없으면 가드 플러그인만 담은 최소 파일을 생성한다
+  (OpenCode 는 플러그인을 자동 로드하지 않아, 이게 없으면 2차 가드가 죽는다).
 - **절대 경로 하드코딩 금지.** 모든 스크립트·문서·frontmatter 경로는 상대 경로여야
   통째로 복사했을 때 대상 저장소에서 그대로 동작한다. `$CLAUDE_PROJECT_DIR` 은 예외.
 - 런타임: Bash + POSIX `awk`/`grep`, Python 3, 선택적 PyYAML. 패키지 매니저·의존성 파일 없음.
@@ -57,9 +59,29 @@ python3 core/scripts/resume-check.py; echo "exit=$?"
 # 4) 실제 배치 — 임시 프로젝트에 깔아 하네스별 경로가 성립하는지 본다
 T=$(mktemp -d); (cd "$T" && git init -q)
 bash install.sh "$T" --harness codex
+test -f "$T/.codex/skills/harness-architect/SKILL.md" -a -f "$T/.codex/hooks.json"   # 산출물 검증
 (cd "$T" && bash .codex/skills/harness-architect/scripts/detect-harness.sh)
 (cd "$T" && bash .codex/skills/harness-architect/scripts/check-superpowers.sh --harness codex)
 (cd "$T" && bash .codex/skills/harness-architect/scripts/init-workspace.sh)   # exit 0/3/4
+
+# 4-1) 부분 클론 방어 — 소스 트리가 잘리면 install.sh 는 조용히 빈 배치를 하지 않고 멈춘다 (issue #2)
+B=$(mktemp -d); mkdir -p "$B/harness-architect"; cp install.sh "$B/harness-architect/"
+T2=$(mktemp -d); (cd "$T2" && git init -q)
+bash "$B/harness-architect/install.sh" "$T2" --harness opencode; test "$?" -eq 2   # exit 2 여야 함
+test ! -e "$T2/.opencode"   # 빈 디렉터리조차 남기지 않는다
+
+# 4-2) OpenCode 가드 활성 — opencode.json 이 없어도 최소 파일을 만들어 플러그인을 등록한다 (issue #3)
+T3=$(mktemp -d); (cd "$T3" && git init -q)
+bash install.sh "$T3" --harness opencode | grep -q '가드: .*활성'   # 생성 + JSON 파싱으로 등록 확인
+python3 -c "import json,sys; d=json.load(open('$T3/opencode.json')); sys.exit(0 if list(d)==['\$schema','plugin'] and d['plugin']==['./.opencode/plugin/harness-guard.js'] else 1)"
+bash install.sh "$T3" --harness opencode | grep -q '이미 최신'      # 재실행 멱등
+T4=$(mktemp -d); (cd "$T4" && git init -q)
+bash install.sh "$T4" --harness opencode --no-merge 2>&1 | grep -q '⚠ 가드'   # --no-merge → 생성 안 함, 경고
+test ! -e "$T4/opencode.json"
+# 문자열만 있고 유효한 plugin 항목이 아니면 "활성" 으로 오판하지 않는다
+T5=$(mktemp -d); (cd "$T5" && git init -q)
+printf '{"plugin":[],"note":"not ./.opencode/plugin/harness-guard.js"}\n' > "$T5/opencode.json"
+bash install.sh "$T5" --harness opencode --no-merge 2>&1 | grep -q '⚠ 가드'
 ```
 
 단일 spec 검증: `python3 core/scripts/validate-spec.py _workspace/harness/spec.yaml --gates _workspace/harness/gates.tsv`

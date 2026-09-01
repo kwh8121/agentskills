@@ -21,13 +21,14 @@ bash install.sh /path/to/your-project                      # 하네스 자동 �
 bash install.sh /path/to/your-project --harness codex      # 명시
 ```
 
-`install.sh` 는 파일 복사만 한다(생성·컴파일 없음). 배치되는 것:
+`install.sh` 는 파일 복사와 설정 병합만 한다(컴파일·코드 생성 없음 — 예외는
+프로젝트에 `opencode.json` 이 없을 때 만드는 최소 파일뿐, 아래 참고). 배치되는 것:
 
 | 하네스 | 코어(스킬 본체) | 어댑터 |
 |---|---|---|
 | Claude Code | `.claude/skills/harness-architect/` | `.claude/agents/*.md` · `.claude/settings.json` |
 | Codex | `.codex/skills/harness-architect/` | `.codex/agents/*.toml` · `.codex/hooks.json` |
-| OpenCode | `.opencode/skills/harness-architect/` | `.opencode/agent/*.md` · `.opencode/plugin/harness-guard.js` |
+| OpenCode | `.opencode/skills/harness-architect/` | `.opencode/agent/*.md` · `.opencode/plugin/harness-guard.js` · `opencode.json` (plugin 등록) |
 
 **이미 있는 설정 파일(`settings.json`·`hooks.json`·`opencode.json`)은 덮어쓰지 않고
 우리 항목만 추가한다** (`scripts/merge-config.py`). 대상 프로젝트의 기존 훅을 지우는 것이
@@ -41,8 +42,18 @@ bash install.sh /path/to/your-project --harness codex      # 명시
 | 대상이 깨진 JSON 이다 | **손대지 않고** 붙일 내용을 출력한다 — 추측으로 고치지 않는다 |
 | `--no-merge` | 기존 파일을 건드리지 않고 출력만 한다 |
 
-`opencode.json` 은 **있을 때만** `plugin` 배열에 더한다. 없으면 만들지 않는다 —
-프로젝트 설정 파일을 새로 만들면 모델 해석 등 다른 동작에 영향을 줄 수 있다.
+`opencode.json` 은 있으면 `plugin` 배열에 더하고, **없으면 가드 플러그인만 담은 최소
+파일(`$schema` + `plugin` 두 키)을 만든다.** OpenCode 는 `.opencode/plugin/*.js` 를 자동
+로드하지 않아, 등록이 없으면 2차 가드(셸 우회·MCP 쓰기 차단)가 통째로 죽기 때문이다.
+두 키뿐이라 모델·프로바이더 해석에는 영향이 없다. `--no-merge` 로 생성을 끄면 선언적
+1차 경계만 남고, install.sh 가 "⚠ 가드:" 경고를 출력한다. (전역 `~/.config/opencode`
+설정의 `plugin` 배열에 의존하는 항목이 있다면, OpenCode 의 배열 병합 방식에 따라
+프로젝트 파일에 함께 나열해야 할 수 있다 — superpowers 플러그인도 같은 배열에 넣는다.)
+
+`install.sh` 는 복사 전에 **소스 트리가 온전한지** 확인하고(`core/`·어댑터 트리가 없으면
+exit 2 — 부분 클론·`/tmp` 정리로 잘린 체크아웃을 조용히 배치하지 않는다), 복사 후에는
+**기대 산출물이 실제로 생겼는지 검증한 뒤에** 성공을 알린다(빠지면 목록을 찍고 exit 1).
+`set -e` 없이 병합 exit code 를 직접 다루므로, 이 두 관문이 "조용한 부분 배치"를 막는다.
 
 ### 사전 요건
 
@@ -60,7 +71,7 @@ bash install.sh /path/to/your-project --harness codex      # 명시
 |---|---|
 | Claude Code | 스킬·서브에이전트·훅을 지원하는 버전 |
 | Codex | `~/.codex/config.toml` 에 `[features] hooks = true`, `multi_agent = true`. **훅은 프로젝트 신뢰와 해시 승인 뒤에만 동작한다** |
-| OpenCode | `opencode.json` 의 `plugin` 배열에 `"./.opencode/plugin/harness-guard.js"` 등록 (없으면 선언적 경계만 남는다) |
+| OpenCode | 없음 — install.sh 가 `opencode.json` 의 `plugin` 에 `"./.opencode/plugin/harness-guard.js"` 를 등록(없으면 최소 파일 생성). `--no-merge` 로 껐으면 직접 등록해야 선언적 경계 이상이 걸린다 |
 
 ### 설치 확인
 
