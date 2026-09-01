@@ -72,12 +72,16 @@ test ! -e "$T2/.opencode"   # 빈 디렉터리조차 남기지 않는다
 
 # 4-2) OpenCode 가드 활성 — opencode.json 이 없어도 최소 파일을 만들어 플러그인을 등록한다 (issue #3)
 T3=$(mktemp -d); (cd "$T3" && git init -q)
-bash install.sh "$T3" --harness opencode
-grep -q 'harness-guard.js' "$T3/opencode.json"                     # 생성 + 등록됨
+bash install.sh "$T3" --harness opencode | grep -q '가드: .*활성'   # 생성 + JSON 파싱으로 등록 확인
+python3 -c "import json,sys; d=json.load(open('$T3/opencode.json')); sys.exit(0 if list(d)==['\$schema','plugin'] and d['plugin']==['./.opencode/plugin/harness-guard.js'] else 1)"
 bash install.sh "$T3" --harness opencode | grep -q '이미 최신'      # 재실행 멱등
 T4=$(mktemp -d); (cd "$T4" && git init -q)
 bash install.sh "$T4" --harness opencode --no-merge 2>&1 | grep -q '⚠ 가드'   # --no-merge → 생성 안 함, 경고
 test ! -e "$T4/opencode.json"
+# 문자열만 있고 유효한 plugin 항목이 아니면 "활성" 으로 오판하지 않는다
+T5=$(mktemp -d); (cd "$T5" && git init -q)
+printf '{"plugin":[],"note":"not ./.opencode/plugin/harness-guard.js"}\n' > "$T5/opencode.json"
+bash install.sh "$T5" --harness opencode --no-merge 2>&1 | grep -q '⚠ 가드'
 ```
 
 단일 spec 검증: `python3 core/scripts/validate-spec.py _workspace/harness/spec.yaml --gates _workspace/harness/gates.tsv`

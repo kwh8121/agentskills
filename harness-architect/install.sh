@@ -60,7 +60,18 @@ esac
 # ── 0) 소스 트리 온전성 ────────────────────────────────────────────────────
 # set -e 를 쓰지 않으므로(아래 병합 exit code 를 직접 다룬다) 부분 클론·잘린
 # 체크아웃이면 cp 가 조용히 실패하고도 "배치 완료"까지 흘러간다. 여기서 멈춘다.
-for need in "$HERE/core/SKILL.md" "$HERE/core/scripts/detect-harness.sh" "$SRC"; do
+# 코어 서브디렉터리마다 대표 파일을 하나씩 본다 — 한 디렉터리가 통째로 빠진
+# 체크아웃을 잡기 위해서다 (복사 도중 잘린 경우는 아래 3.5 의 파일 수 대조가 잡는다).
+for need in \
+    "$HERE/core/SKILL.md" \
+    "$HERE/core/roles/manifest.tsv" \
+    "$HERE/core/schemas/harness-spec.yaml" \
+    "$HERE/core/references/catalog.md" \
+    "$HERE/core/references/adapters/README.md" \
+    "$HERE/core/examples" \
+    "$HERE/core/scripts/detect-harness.sh" \
+    "$HERE/core/scripts/guard-readonly.py" \
+    "$SRC"; do
     if [[ ! -e "$need" ]]; then
         echo "install: 소스 트리가 온전하지 않습니다 — '$need' 가 없습니다." >&2
         echo "install: 저장소를 다시 받으십시오 (부분 클론·잘린 체크아웃일 수 있습니다)." >&2
@@ -138,7 +149,8 @@ if [[ "$HARNESS" == "opencode" && "$NO_MERGE" -eq 0 ]]; then
     if [[ -f "$TARGET/opencode.json" ]]; then
         $MERGE --opencode-plugin "$TARGET/opencode.json" "./.opencode/plugin/harness-guard.js"
     else
-        cat > "$TARGET/opencode.json" <<'JSON'
+        # 쓰기 실패(권한·디스크)를 삼키지 않는다 — 삼키면 3.6 경고만 남고 exit 0 이 된다.
+        if ! cat > "$TARGET/opencode.json" <<'JSON'
 {
   "$schema": "https://opencode.ai/config.json",
   "plugin": [
@@ -146,6 +158,12 @@ if [[ "$HARNESS" == "opencode" && "$NO_MERGE" -eq 0 ]]; then
   ]
 }
 JSON
+        then
+            rm -f "$TARGET/opencode.json"
+            echo "install: $TARGET/opencode.json 을 만들지 못했습니다 (권한·디스크 확인)." >&2
+            echo "install: OpenCode 2차 가드를 활성화하지 못했습니다 — 설치 미완료." >&2
+            exit 1
+        fi
         echo "  설정:     $TARGET/opencode.json 생성 (가드 플러그인 등록)"
     fi
 fi
@@ -156,6 +174,12 @@ fi
 missing=()
 [[ -f "$SKILL_DEST/SKILL.md" ]]                  || missing+=("$SKILL_DEST/SKILL.md")
 [[ -f "$SKILL_DEST/scripts/guard-readonly.py" ]] || missing+=("$SKILL_DEST/scripts/guard-readonly.py")
+
+# 코어가 통째로 왔는지 — 센티넬 몇 개가 아니라 소스 대비 대상 파일 수로 본다.
+# (복사가 디스크·권한으로 중간에 잘린 경우를 잡는다. 소스 자체가 잘린 경우는 위 0 이 잡는다.)
+core_src=$(find "$HERE/core" -type f | wc -l)
+core_dst=$(find "$SKILL_DEST" -type f | wc -l)
+[[ "$core_dst" -lt "$core_src" ]] && missing+=("$SKILL_DEST/ (코어 $core_dst/$core_src 파일)")
 
 case "$HARNESS" in
     claude)   SRC_AGENT="$SRC/agents"; DST_AGENT="$DEST/agents"; WIRING="" ;;     # settings.json 은 있을 때만
@@ -184,11 +208,22 @@ if [[ "${#missing[@]}" -gt 0 ]]; then
 fi
 echo "  검증:     핵심 산출물 · 역할 ${roles_ok}종 확인"
 
-# OpenCode 2차 가드가 실제로 배선됐는지 — opencode.json 의 plugin 에 등록됐는가.
+# ── 3.6) OpenCode 가드 배선 확인 ─────────────────────────────────────────
+# 2차 가드가 실제로 배선됐는지 — opencode.json 의 plugin 배열에 정확히 그 항목이
+# 들어 있는지 JSON 을 파싱해 확인한다 (문자열 grep 은 무관한 값·주석에 오탐).
 # 기본 경로에서는 위에서 만들거나 병합했으므로 통과한다. --no-merge 이거나 opencode.json
-# 이 깨져 병합이 막힌 경우에만 경고가 뜬다 (선언적 1차 경계는 그대로 살아 있다).
+# 이 깨진 경우에만 경고가 뜬다 (선언적 1차 경계는 그대로 살아 있다).
 if [[ "$HARNESS" == "opencode" ]]; then
-    if [[ -f "$TARGET/opencode.json" ]] && grep -q "harness-guard.js" "$TARGET/opencode.json" 2>/dev/null; then
+    if [[ -f "$TARGET/opencode.json" ]] && python3 - "$TARGET/opencode.json" <<'PY'
+import json, sys
+try:
+    c = json.load(open(sys.argv[1], encoding="utf-8"))
+except Exception:
+    sys.exit(1)
+sys.exit(0 if isinstance(c, dict) and isinstance(c.get("plugin"), list)
+         and "./.opencode/plugin/harness-guard.js" in c["plugin"] else 1)
+PY
+    then
         echo "  가드:     opencode.json 에 플러그인 등록됨 (2차 경계 활성)"
     else
         echo "  ⚠ 가드:   opencode.json 에 플러그인이 등록되지 않았습니다 — 2차 경계(bash 우회·MCP 쓰기 차단)가 비활성입니다." >&2
