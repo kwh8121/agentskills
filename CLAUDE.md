@@ -57,9 +57,16 @@ python3 core/scripts/resume-check.py; echo "exit=$?"
 # 4) 실제 배치 — 임시 프로젝트에 깔아 하네스별 경로가 성립하는지 본다
 T=$(mktemp -d); (cd "$T" && git init -q)
 bash install.sh "$T" --harness codex
+test -f "$T/.codex/skills/harness-architect/SKILL.md" -a -f "$T/.codex/hooks.json"   # 산출물 검증
 (cd "$T" && bash .codex/skills/harness-architect/scripts/detect-harness.sh)
 (cd "$T" && bash .codex/skills/harness-architect/scripts/check-superpowers.sh --harness codex)
 (cd "$T" && bash .codex/skills/harness-architect/scripts/init-workspace.sh)   # exit 0/3/4
+
+# 4-1) 부분 클론 방어 — 소스 트리가 잘리면 install.sh 는 조용히 빈 배치를 하지 않고 멈춘다 (issue #2)
+B=$(mktemp -d); mkdir -p "$B/harness-architect"; cp install.sh "$B/harness-architect/"
+T2=$(mktemp -d); (cd "$T2" && git init -q)
+bash "$B/harness-architect/install.sh" "$T2" --harness opencode; test "$?" -eq 2   # exit 2 여야 함
+test ! -e "$T2/.opencode"   # 빈 디렉터리조차 남기지 않는다
 ```
 
 단일 spec 검증: `python3 core/scripts/validate-spec.py _workspace/harness/spec.yaml --gates _workspace/harness/gates.tsv`

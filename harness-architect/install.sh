@@ -55,6 +55,17 @@ case "$HARNESS" in
     *) echo "install: 알 수 없는 하네스 '$HARNESS' (claude|codex|opencode)" >&2; exit 2 ;;
 esac
 
+# ── 0) 소스 트리 온전성 ────────────────────────────────────────────────────
+# set -e 를 쓰지 않으므로(아래 병합 exit code 를 직접 다룬다) 부분 클론·잘린
+# 체크아웃이면 cp 가 조용히 실패하고도 "배치 완료"까지 흘러간다. 여기서 멈춘다.
+for need in "$HERE/core/SKILL.md" "$HERE/core/scripts/detect-harness.sh" "$SRC"; do
+    if [[ ! -e "$need" ]]; then
+        echo "install: 소스 트리가 온전하지 않습니다 — '$need' 가 없습니다." >&2
+        echo "install: 저장소를 다시 받으십시오 (부분 클론·잘린 체크아웃일 수 있습니다)." >&2
+        exit 2
+    fi
+done
+
 DEST="$TARGET/$DOT"
 SKILL_DEST="$DEST/skills/harness-architect"
 
@@ -123,6 +134,40 @@ done
 if [[ "$HARNESS" == "opencode" && "$NO_MERGE" -eq 0 && -f "$TARGET/opencode.json" ]]; then
     $MERGE --opencode-plugin "$TARGET/opencode.json" "./.opencode/plugin/harness-guard.js"
 fi
+
+# ── 3.5) 배치 검증 ────────────────────────────────────────────────────────
+# 복사가 부분 실패해도(디스크·권한·잘린 소스) set -e 가 없어 여기까지 온다.
+# 조용한 부분 배치를 큰 실패로 바꾼다 — 기대 산출물이 실제로 있는지 본다.
+missing=()
+[[ -f "$SKILL_DEST/SKILL.md" ]]                  || missing+=("$SKILL_DEST/SKILL.md")
+[[ -f "$SKILL_DEST/scripts/guard-readonly.py" ]] || missing+=("$SKILL_DEST/scripts/guard-readonly.py")
+
+case "$HARNESS" in
+    claude)   SRC_AGENT="$SRC/agents"; DST_AGENT="$DEST/agents"; WIRING="" ;;     # settings.json 은 있을 때만
+    codex)    SRC_AGENT="$SRC/agents"; DST_AGENT="$DEST/agents"; WIRING="$DEST/hooks.json" ;;
+    opencode) SRC_AGENT="$SRC/agent";  DST_AGENT="$DEST/agent";  WIRING="$DEST/plugin/harness-guard.js" ;;
+esac
+[[ -n "$WIRING" && ! -e "$WIRING" ]] && missing+=("$WIRING")
+
+# 역할 파일은 소스 어댑터 트리의 basename 기준으로 대조한다 — 대상에 이미 있던 사용자
+# 에이전트에 개수가 부풀지 않게. CATALOG 는 7종 고정(check-adapters.py 가 강제)이므로
+# 소스가 7 미만이면 잘린 체크아웃, 도착이 소스 미만이면 복사 중단이다.
+roles_src=0; roles_ok=0
+while IFS= read -r -d '' rf; do
+    roles_src=$((roles_src + 1))
+    [[ -f "$DST_AGENT/$(basename "$rf")" ]] && roles_ok=$((roles_ok + 1))
+done < <(find "$SRC_AGENT" -maxdepth 1 -type f \( -name '*.md' -o -name '*.toml' \) -print0 2>/dev/null)
+[[ "$roles_src" -ne 7 || "$roles_ok" -ne "$roles_src" ]] \
+    && missing+=("$DST_AGENT/ (역할 $roles_ok 종 도착 / 소스 $roles_src 종 / 기대 7종)")
+
+if [[ "${#missing[@]}" -gt 0 ]]; then
+    echo "" >&2
+    echo "install: 배치가 불완전합니다 — 다음 산출물이 없습니다:" >&2
+    printf '  %s\n' "${missing[@]}" >&2
+    echo "install: 소스 트리·디스크 공간·권한을 확인하고 다시 실행하십시오." >&2
+    exit 1
+fi
+echo "  검증:     핵심 산출물 · 역할 ${roles_ok}종 확인"
 
 # ── 4) 하네스별 후속 조치 ──────────────────────────────────────────────────
 echo ""

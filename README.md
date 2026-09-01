@@ -12,16 +12,25 @@
 ## 설치
 
 ```bash
-git clone --depth 1 https://github.com/kwh8121/agentskills.git /tmp/agentskills
+# 클론과 설치는 한 줄로 잇는다 — 클론이 실패하면 install.sh 도 돌지 않게.
+# 대상 경로는 인자로 넘긴다(cd 불필요). 임시 디렉터리는 재실행 대비 먼저 지운다
+# (git clone 은 비어있지 않은 대상에 exit 128 로 실패한다).
+rm -rf /tmp/agentskills && \
+git clone --depth 1 https://github.com/kwh8121/agentskills.git /tmp/agentskills && \
+bash /tmp/agentskills/harness-architect/install.sh /path/to/your-project              # 하네스 자동 감지
 
-cd /path/to/your-project
-bash /tmp/agentskills/harness-architect/install.sh .                      # 하네스 자동 감지
-bash /tmp/agentskills/harness-architect/install.sh . --harness codex      # 명시
-bash /tmp/agentskills/harness-architect/install.sh . --no-merge           # 기존 설정을 건드리지 않음
+#   ... install.sh /path/to/your-project --harness codex      # 하네스 명시
+#   ... install.sh /path/to/your-project --no-merge           # 기존 설정을 건드리지 않음
 ```
+
+`install.sh` 는 소스 트리가 온전한지(부분 클론 방지) 먼저 확인하고, 배치가 끝나면
+**기대 산출물이 실제로 생겼는지 검증한 뒤에** 성공을 알린다. 어느 쪽이든 실패하면
+non-zero 로 종료하므로 위처럼 `&&` 로 이어도 안전하다.
 
 기존 설정 파일은 **덮어쓰지 않고 우리 항목만 추가**한다. 백업(`.bak-<타임스탬프>`)을 남기고,
 재실행해도 중복되지 않으며, 깨진 JSON 은 손대지 않고 붙일 내용을 출력한다.
+`.claude/` · `.codex/` · `.opencode/` 디렉터리가 **이미 있어도 안전하다** — 기존 역할 파일·
+플러그인·설정은 보존되고, 배치 경로(아래 표)는 현재 설치본의 정식 출력이다.
 
 배치되는 것과 **하네스별로 반드시 해야 하는 후속 조치**:
 
